@@ -5,5 +5,3 @@ dependencies:
   - pandas
   - sympy
   - scipy
-  - pip:
-      - warnings
