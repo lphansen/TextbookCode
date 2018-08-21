@@ -3,6 +3,6 @@ dependencies:
   - numpy
   - pip
   - pandas
-  - pip:
-      - julia
-  
+  - sympy
+  - scipy
+  - warnings
