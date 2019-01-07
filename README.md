@@ -7,8 +7,8 @@ This repository contains code corresponding to Chapter _______ of the book _____
 
 ## Contents:
 
-### adjustment_cost.ipynb
+### [adjustment_cost.ipynb](adjustment_cost.ipynb)
 This notebook contains a simple log linear, single agent model. It follows the model given in section ___ of the textbook.
 
-### model_code.py
-This provides users with the main functions used to solve the models and calculate the impulse responses.
+### [model_code.py](model_code.py)
+This provides users with the main functions used to solve the single agent model and calculate the impulse responses. It is used in the [adjustment_cost.ipynb notebook.](adjustment_cost.ipynb)
