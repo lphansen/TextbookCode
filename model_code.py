@@ -26,7 +26,7 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
         # Use all empirical targets with all parameters free
         istar = np.log(IoverK)
         cstar = np.log(CoverI * np.exp(istar))
-        delta0 = 0.0075 * risk_free_adj - alpha_c * rho
+        delta0 = 0.007 * risk_free_adj - alpha_c * rho
         A0 = np.exp(istar) + np.exp(cstar)
         kstar = alpha_c
 
@@ -41,13 +41,7 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
         # plt.show()
         # plt.clf()
 
-        def g(x):
-            v0, phi, a_k = x
-            Phi = np.exp(istar) - phi/2 * np.exp(istar)**2
-            PhiPrime = 1 - phi * np.exp(istar)
-            # Phi = np.log(1 + phi * np.exp(istar)) / phi
-            # PhiPrime = 1 / (1 + phi * np.exp(istar))
-
+        def f(v0):
             if rho != 1:
                 r3 = np.exp(v0) ** (1 - rho) - (1 - np.exp(-delta0)) \
                      * np.exp(cstar) ** (1 - rho) - np.exp(-delta0) \
@@ -57,17 +51,59 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
                      - np.exp(cstar) ** (1 - np.exp(-delta0)) \
                      * np.exp(kstar) ** (np.exp(-delta0))
 
-            resids = np.array([
-                np.exp(kstar) - (1 + Phi) * np.exp(-a_k),
-                np.exp(-rho * cstar + (rho - 1) * (v0 + kstar)) \
-                    * (np.exp(delta0) - 1) * (1 + Phi) \
-                    - PhiPrime,
-                r3
-            ])
-            return resids
+            return r3
 
-        vstar, phi0, a_k0 = opt.root(g, np.array([-3.2, 13.807, .03])).x
+        vstar = opt.root(f, -3.2).x[0]
+
+        def g(phi):
+            Phi = (1. + phi * np.exp(istar)) ** (1. / phi)
+            PhiPrime = (1. + phi * np.exp(istar)) ** (1. / phi - 1)
+            return np.exp(-rho * cstar + (rho - 1) * (vstar + kstar)) \
+                * (np.exp(delta0) - 1) * (Phi) \
+                - PhiPrime
+
+        phi0 = opt.root(g, 700).x[0]
+
+        # fig = plt.figure()
+        # dom = np.linspace(100, 10000, 10000)
+        # plt.plot(dom, g(dom))
+        # plt.show()
+
+        a_k0 = np.log((1. + phi0 * np.exp(istar)) ** (1. / phi0)) - kstar
+        print("Resids size",la.norm(np.array([f(vstar), g(phi0)])))
         zstar = 0
+        #
+        # def g(x):
+        #     v0, phi, a_k = x
+        #     # Phi = 1 + np.exp(istar) - phi/2 * np.exp(istar)**2
+        #     # PhiPrime = 1 - phi * np.exp(istar)
+        #     # Phi = 1 + np.log(1 + phi * np.exp(istar)) / phi
+        #     # PhiPrime = 1 / (1 + phi * np.exp(istar))
+        #     Phi = (1. + phi * np.exp(istar)) ** (1. / phi)
+        #     PhiPrime = (1. + phi * np.exp(istar)) ** (1. / phi - 1)
+        #
+        #     if rho != 1:
+        #         r3 = np.exp(v0) ** (1 - rho) - (1 - np.exp(-delta0)) \
+        #              * np.exp(cstar) ** (1 - rho) - np.exp(-delta0) \
+        #              * (np.exp(v0) * np.exp(kstar)) ** (1 - rho)
+        #     else:
+        #         r3 = np.exp(v0) ** (1 - np.exp(-delta0)) \
+        #              - np.exp(cstar) ** (1 - np.exp(-delta0)) \
+        #              * np.exp(kstar) ** (np.exp(-delta0))
+        #
+        #     resids = np.array([
+        #         np.exp(kstar) - (Phi) * np.exp(-a_k),
+        #         np.exp(-rho * cstar + (rho - 1) * (v0 + kstar)) \
+        #             * (np.exp(delta0) - 1) * (Phi) \
+        #             - PhiPrime,
+        #         r3
+        #     ])
+        #     return resids
+        #
+        # vstar, phi0, a_k0 = opt.root(g, np.array([-3.2, 13.807, .03])).x
+        # zstar = 0
+
+        # print("SS residuals", g([vstar, phi0, a_k0]))
 
         A = A0
         delta = delta0
@@ -82,6 +118,8 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
             phi = phi0
         else:
             phi = 10
+
+        """
             # This means that we have changed a parameter and the steady state
             # calculations from before are no longer valid. Therefore the
             # calibrated parameters and the changed parameters are used to
@@ -89,19 +127,21 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
 
             def root_fun(C):
                 I_ = A - C
-                Phi = I_ - phi/2 * I_**2
-                PhiPrime = 1 - phi * I_
-                # Phi = np.log(1 + phi * I_) / phi
+                # Phi = 1 + I_ - phi/2 * I_**2
+                # PhiPrime = 1 - phi * I_
+                Phi = (1. + phi * I_) ** (1. / phi)
+                PhiPrime = (1. + phi * I_) ** (1. / phi - 1)
+                # Phi = 1 + np.log(1 + phi * I_) / phi
                 # PhiPrime = 1 / (1 + phi * I_)
-                K = (1 + Phi) * np.exp(-a_k)
+                K = (Phi) * np.exp(-a_k)
                 if rho != 1:
                     residual = (np.exp(delta) - 1) * C ** -rho \
-                        * (K ** (rho - 1) - np.exp(-delta)) * (1 + Phi) \
+                        * (K ** (rho - 1) - np.exp(-delta)) * (Phi) \
                         - PhiPrime * (1 - np.exp(-delta)) \
                         * C ** (1 - rho)
                 else:
                     residual = (np.exp(delta) - 1) * C ** -1 \
-                        * K ** ((rho - 1) / (1 - np.exp(-delta))) * (1 + Phi) \
+                        * K ** ((rho - 1) / (1 - np.exp(-delta))) * (Phi) \
                         - (1 - phi * I_)
                 return residual
 
@@ -120,7 +160,8 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
                 C2 = opt.brentq(root_fun, area[-1], dom[-1])
 
                 I1 = A - C1
-                K1 = (1 + I1 - phi/2 * I1**2) * np.exp(-a_k)
+                # K1 = (1 + I1 - phi/2 * I1**2) * np.exp(-a_k)
+                K1 = (1. + phi * I1) ** (1. / phi) * np.exp(-a_k)
                 # K1 = (1 + np.log(1 + phi * I1) / phi) * np.exp(-a_k)
                 if rho != 1:
                     V1 = (1 - np.exp(-delta)) * C1 ** (1 - rho) \
@@ -129,7 +170,8 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
                     V1 = C1 ** (1 - np.exp(-delta)) * K1 ** (np.exp(-delta))
 
                 I2 = A - C2
-                K2 = (1 + I2 - phi/2 * I2**2) * np.exp(-a_k)
+                # K2 = (1 + I2 - phi/2 * I2**2) * np.exp(-a_k)
+                K2 = (1. + phi * I2) ** (1. / phi) * np.exp(-a_k)
                 # K2 = (1 + np.log(1 + phi * I2) / phi) * np.exp(-a_k)
                 if rho != 1:
                     V2 = (1 - np.exp(-delta)) * C2 ** (1 - rho) \
@@ -148,12 +190,14 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
                 C2 = opt.brentq(root_fun, area[-1], dom[-1])
 
                 I1 = A - C1
-                K1 = (1 + I1 - phi/2 * I1**2) * np.exp(-a_k)
+                # K1 = (1 + I1 - phi/2 * I1**2) * np.exp(-a_k)
+                K1 = (1. + phi * I1) ** (1. / phi) * np.exp(-a_k)
                 # K1 = (1 + np.log(1 + phi * I1) / phi) * np.exp(-a_k)
                 V1 = (1 - np.exp(-delta)) * C1 ** (1 - rho) \
                      / (1 - np.exp(-delta) * K1 ** (1 - rho))
                 I2 = A - C2
-                K2 = (1 + I2 - phi/2 * I2**2) * np.exp(-a_k)
+                # K2 = (1 + I2 - phi/2 * I2**2) * np.exp(-a_k)
+                K2 = (1. + phi * I2) ** (1. / phi) * np.exp(-a_k)
                 # K2 = (1 + np.log(1 + phi * I2) / phi) * np.exp(-a_k)
                 if rho != 1:
                     V2 = (1 - np.exp(-delta)) * C2 ** (1 - rho) \
@@ -170,7 +214,8 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
                 Cstar = opt.brentq(root_fun, 1e-5, A)
 
             Istar = A - Cstar
-            Kstar = (1 + Istar - phi/2 * Istar**2) * np.exp(-a_k)
+            # Kstar = (1 + Istar - phi/2 * Istar**2) * np.exp(-a_k)
+            Kstar = (1. + phi * Istar) ** (1. / phi) * np.exp(-a_k)
             # Kstar = (1 + np.log(1 + phi * Istar) / phi) * np.exp(-a_k)
             if rho != 1:
                 Vstar = ((1 - np.exp(-delta)) * Cstar ** (1 - rho)) \
@@ -188,13 +233,15 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
             kstar = np.log(Kstar)
             vstar = np.log(Vstar)
             zstar = 0
+        """
 
     elif empirical == 2:
+        raise ValueError("The specifications for C and V are not yet developed for this empirical case.")
         # Fix phi = 0 and free C/I
         I = IoverK
         istar = np.log(I)
         phi = 0
-        delta = 0.0075 * risk_free_adj - alpha_c * rho
+        delta = 0.008 * risk_free_adj - alpha_c * rho
         kstar = alpha_c
         G = np.exp(kstar)
         a_k = np.log(1 + I) - kstar
@@ -231,6 +278,7 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
     else:
         raise ValueError("'Empirical' must be 1 or 2.")
 
+    print(A, phi, a_k)
 
     # Declare necessary symbols in sympy notation
     # Note that the p represents time, so k = k_t and kp = k_{t+1}
@@ -241,18 +289,20 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
     # log linearized governing equations
 
     I = A - exp(c) # I_t / K_t
-    i = I - phi / 2 * I ** 2 # Joe's version of I; also I^*/K_t
-    # i = log(phi * I + 1)/phi
-    phip = 1 - phi * I
+    # i = 1 + I - phi / 2 * I ** 2 # Joe's version of I; also I^*/K_t
+    i = (1. + phi * I) ** (1. / phi)
+    # i = 1 + log(phi * I + 1)/phi
+    # phip = 1 - phi * I
+    phip = (1. + phi * I) ** (1. / phi - 1)
     # phip = 1 / (phi * I + 1)
     r = vp + kp
 
     # Equation 1: Capital Evolution
-    eq1 = kp - log(1 + i) + a_k - z
+    eq1 = kp - log(i) + a_k - z
 
     # Equation 2: First Order Conditions on Consumption
     eq2 = log(exp(delta) - 1) - rho * c + (rho - 1) * r + \
-                    log(1 + i) - log(phip)
+                    log(i) - log(phip)
 
     # Equation 3: Value Function Evolution: rho == 1 is separate case
     if rho != 1:
@@ -314,7 +364,7 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
         print("Rho = {}".format(rho))
         # print(-delta + (1 - rho) * kstar)
         print(("{} out of {} eigenvalues were found to be"
-               "unstable.").format(exp_dim, total_dim))
+               " unstable.").format(exp_dim, total_dim))
 
     J1 = Z.T[stable_dim:,:exp_dim][0][0]
     J2 = Z.T[stable_dim:,exp_dim:][0][0]
@@ -328,8 +378,8 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
 
     slopes = [k_loading, c_loading, i_loading, v_loading]
 
-    sigz = np.array([.00012, .00027])
-    sigk = np.array([.00481, 0.0])
+    sigz = np.array([.00011, .00025])
+    sigk = np.array([.00477, 0.0])
 
     # Create first order adjustments on constant terms
     if verbose:
@@ -345,6 +395,8 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
 
         sigk = snew[0][::-1] * np.array([1,-1])
         sigz = snew[1][::-1] * np.array([1,-1])
+
+        print(np.array([sigk,sigz]) * 100)
 
     adjustment = - (1 - gam) / 2 * la.norm(v_loading * sigz + sigk) ** 2
     adjustments = la.solve((Amat - B)[:3,:3], np.array([0,0,adjustment]))
