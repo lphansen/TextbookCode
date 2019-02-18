@@ -21,8 +21,54 @@ CoverI = 2.556
 def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
                 empirical = 1, calibrated = True, risk_free_adj = 1, shock = 1):
 
+    if empirical == 0:
+#         a_k = 0.03191501061172916
+#         phi = 13.353240248981844
+#         A = 0.26314399999999993
+        a_k = 0.017
+        phi = 13.807 / 2
+        A = 0.052
+#         delta = 0.007 * risk_free_adj - alpha_c * rho
+        delta = 0.025
+        def f(c):
+            # NEW FUNCTION
+            Phi = (1 + phi * (A - np.exp(c)))**(1/phi)
+            Phiprime = (1 + phi * (A - np.exp(c)))**(1/phi - 1)
+            k = np.log(Phi) - a_k
+
+            if rho == 1:
+                v = c + k * np.exp(-delta) / (1 - np.exp(-delta))
+            else:
+                v = np.log((1 - np.exp(-delta)) * np.exp(c * (1 - rho)) / (1 - np.exp(-delta + k * (1 - rho)))) / (1 - rho)
+
+            r1 = Phiprime - (np.exp(delta) - 1) * Phi * np.exp(c * -rho + (v + k) * (rho - 1))
+            return r1
+
+
+        # dom = np.linspace(-10, np.log(A), 1000)
+        # plt.plot(dom, f(dom))
+        # plt.hlines(0, -10, np.log(A))
+        # plt.show()
+
+        sol = opt.bisect(f, -5, -2, disp = True)
+        cstar = sol
+        # NEW FUNCTION
+        Phi = (1 + phi * (A - np.exp(cstar)))**(1/phi)
+        Phiprime = (1 + phi * (A - np.exp(cstar)))**(1/phi - 1)
+#         Phi = (1 + (A - np.exp(cstar)) - phi / 2 * (A - np.exp(cstar)) ** 2)
+#         Phiprime = 1 - phi * (A - np.exp(cstar))
+        kstar = np.log(Phi) - a_k
+
+        if rho == 1:
+            vstar = cstar + kstar * np.exp(-delta) / (1 - np.exp(-delta))
+        else:
+            vstar = np.log((1 - np.exp(-delta)) * np.exp(cstar * (1 - rho)) / (1 - np.exp(-delta + kstar * (1 - rho)))) / (1 - rho)
+
+        istar = A - np.exp(cstar)
+        zstar = 0
+
     # Calculate parameters using empirical targets
-    if empirical == 1:
+    elif empirical == 1:
         # Use all empirical targets with all parameters free
         istar = np.log(IoverK)
         cstar = np.log(CoverI * np.exp(istar))
@@ -70,7 +116,7 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
         # plt.show()
 
         a_k0 = np.log((1. + phi0 * np.exp(istar)) ** (1. / phi0)) - kstar
-        print("Resids size",la.norm(np.array([f(vstar), g(phi0)])))
+        #print("Resids size",la.norm(np.array([f(vstar), g(phi0)])))
         zstar = 0
         #
         # def g(x):
@@ -241,7 +287,7 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
         I = IoverK
         istar = np.log(I)
         phi = 0
-        delta = 0.008 * risk_free_adj - alpha_c * rho
+        delta = 0.007 * risk_free_adj - alpha_c * rho
         kstar = alpha_c
         G = np.exp(kstar)
         a_k = np.log(1 + I) - kstar
@@ -278,7 +324,7 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
     else:
         raise ValueError("'Empirical' must be 1 or 2.")
 
-    print(A, phi, a_k)
+    #print(A, phi, a_k)
 
     # Declare necessary symbols in sympy notation
     # Note that the p represents time, so k = k_t and kp = k_{t+1}
@@ -289,10 +335,11 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
     # log linearized governing equations
 
     I = A - exp(c) # I_t / K_t
-    # i = 1 + I - phi / 2 * I ** 2 # Joe's version of I; also I^*/K_t
+    # NEW FUNCTION
+#     i = 1 + I - phi / 2 * I ** 2 # Joe's version of I; also I^*/K_t
     i = (1. + phi * I) ** (1. / phi)
     # i = 1 + log(phi * I + 1)/phi
-    # phip = 1 - phi * I
+#     phip = 1 - phi * I
     phip = (1. + phi * I) ** (1. / phi - 1)
     # phip = 1 / (phi * I + 1)
     r = vp + kp
@@ -396,13 +443,12 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
         sigk = snew[0][::-1] * np.array([1,-1])
         sigz = snew[1][::-1] * np.array([1,-1])
 
-        print(np.array([sigk,sigz]) * 100)
+        #print(np.array([sigk,sigz]) * 100)
 
     adjustment = - (1 - gam) / 2 * la.norm(v_loading * sigz + sigk) ** 2
     adjustments = la.solve((Amat - B)[:3,:3], np.array([0,0,adjustment]))
 
     # print(adjustments)
-
     kstar += adjustments[0]
     cstar += adjustments[1]
     vstar += adjustments[2]
@@ -458,4 +504,7 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
 
 
 if __name__ == "__main__":
-    pass
+    r = float(sys.argv[1])
+    solve_model(r, 10, 0.014, 200, risk_free_adj = 1,
+                                 empirical = 0,
+                                 transform = False, shock = 1, verbose = True)
