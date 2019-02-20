@@ -11,29 +11,65 @@ import pprint
 from scipy import linalg as la
 import os
 
-# alpha_c = 0.00373
 alpha_c = 0.00484
-# IoverK = IoverK
 IoverK = 0.074
-# CoverI = 1
 CoverI = 2.556
 
 def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
                 empirical = 1, calibrated = True, risk_free_adj = 1, shock = 1):
 
-    if empirical == 0:
-#         a_k = 0.03191501061172916
-#         phi = 13.353240248981844
-#         A = 0.26314399999999993
-        a_k = 0.017
-        phi = 13.807 / 2
-        A = 0.052
-#         delta = 0.007 * risk_free_adj - alpha_c * rho
-        delta = 0.025
+    #######################################################
+    #                Section 1: Calibration               #
+    #######################################################
+
+    if empirical == 0 or empirical == 0.5:
+        # Calibrated params old model
+        # a_k = 0.03191501061172916
+        # phi = 13.353240248981844
+        # A = 0.26314399999999993
+        # delta = 0.007 * risk_free_adj - alpha_c * rho
+
+        # Original, randomly selected params
+        # a_k = 0.017
+        # phi = 13.807 / 2
+        # A = 0.052
+        # delta = 0.025
+
+
+        if empirical == 0:
+            # Eberly Wang annual params
+            # a_k = .1
+            # phi1 = 100
+            # phi2 = .05
+            # # A = 0.1 + .004
+            # A = 0.1 + .042
+            # delta = .02
+
+            # Eberly Wang quarterly params
+            a_k = .1 / 4
+            phi1 = 100 * 4
+            phi2 = .05 / 4
+            A = (.1 + .042) / 4
+            delta = .02 / 4
+
+        if empirical == 0.5:
+            # Joe model annual params
+            # a_k = .05
+            # phi1 = 3.
+            # phi2 = 1. / phi1
+            # A = .14
+            # delta = .05
+
+            # Joe model quarterly params
+            a_k = .05 / 4
+            phi1 = 3. * 4
+            phi2 = 1. / phi1
+            A = .14 / 4
+            delta = .05 / 4
+
         def f(c):
-            # NEW FUNCTION
-            Phi = (1 + phi * (A - np.exp(c)))**(1/phi)
-            Phiprime = (1 + phi * (A - np.exp(c)))**(1/phi - 1)
+            Phi = (1 + phi1 * (A - np.exp(c)))**(phi2)
+            Phiprime = phi1 * phi2 * (1 + phi1 * (A - np.exp(c)))**(phi2 - 1)
             k = np.log(Phi) - a_k
 
             if rho == 1:
@@ -45,26 +81,22 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
             return r1
 
 
-        # dom = np.linspace(-10, np.log(A), 1000)
-        # plt.plot(dom, f(dom))
-        # plt.hlines(0, -10, np.log(A))
-        # plt.show()
-
-        sol = opt.bisect(f, -5, -2, disp = True)
+        sol = opt.bisect(f, -10, np.log(A), disp = True)
         cstar = sol
-        # NEW FUNCTION
-        Phi = (1 + phi * (A - np.exp(cstar)))**(1/phi)
-        Phiprime = (1 + phi * (A - np.exp(cstar)))**(1/phi - 1)
-#         Phi = (1 + (A - np.exp(cstar)) - phi / 2 * (A - np.exp(cstar)) ** 2)
-#         Phiprime = 1 - phi * (A - np.exp(cstar))
+
+        Phi = (1 + phi1 * (A - np.exp(cstar)))**(phi2)
+        Phiprime = phi1 * phi2 * (1 + phi1 * (A - np.exp(cstar)))**(phi2 - 1)
+
         kstar = np.log(Phi) - a_k
+        istar = np.log(A - np.exp(cstar))
 
         if rho == 1:
             vstar = cstar + kstar * np.exp(-delta) / (1 - np.exp(-delta))
         else:
             vstar = np.log((1 - np.exp(-delta)) * np.exp(cstar * (1 - rho)) / (1 - np.exp(-delta + kstar * (1 - rho)))) / (1 - rho)
 
-        istar = A - np.exp(cstar)
+        istar = np.log(A - np.exp(cstar))
+
         zstar = 0
 
     # Calculate parameters using empirical targets
@@ -75,17 +107,6 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
         delta0 = 0.007 * risk_free_adj - alpha_c * rho
         A0 = np.exp(istar) + np.exp(cstar)
         kstar = alpha_c
-
-        # def f(x):
-        #     return np.exp(x * (1 - rho)) - (1 - np.exp(-delta0)) * \
-        #     np.exp(cstar * (1 - rho)) - \
-        #     np.exp(-delta0 + (kstar + x) * (1 - rho))
-        #
-        # dom = np.linspace(-1, 10, 500)
-        # plt.plot(dom, f(dom))
-        # plt.hlines(0, -1, 10)
-        # plt.show()
-        # plt.clf()
 
         def f(v0):
             if rho != 1:
@@ -110,176 +131,14 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
 
         phi0 = opt.root(g, 700).x[0]
 
-        # fig = plt.figure()
-        # dom = np.linspace(100, 10000, 10000)
-        # plt.plot(dom, g(dom))
-        # plt.show()
-
         a_k0 = np.log((1. + phi0 * np.exp(istar)) ** (1. / phi0)) - kstar
-        #print("Resids size",la.norm(np.array([f(vstar), g(phi0)])))
-        zstar = 0
-        #
-        # def g(x):
-        #     v0, phi, a_k = x
-        #     # Phi = 1 + np.exp(istar) - phi/2 * np.exp(istar)**2
-        #     # PhiPrime = 1 - phi * np.exp(istar)
-        #     # Phi = 1 + np.log(1 + phi * np.exp(istar)) / phi
-        #     # PhiPrime = 1 / (1 + phi * np.exp(istar))
-        #     Phi = (1. + phi * np.exp(istar)) ** (1. / phi)
-        #     PhiPrime = (1. + phi * np.exp(istar)) ** (1. / phi - 1)
-        #
-        #     if rho != 1:
-        #         r3 = np.exp(v0) ** (1 - rho) - (1 - np.exp(-delta0)) \
-        #              * np.exp(cstar) ** (1 - rho) - np.exp(-delta0) \
-        #              * (np.exp(v0) * np.exp(kstar)) ** (1 - rho)
-        #     else:
-        #         r3 = np.exp(v0) ** (1 - np.exp(-delta0)) \
-        #              - np.exp(cstar) ** (1 - np.exp(-delta0)) \
-        #              * np.exp(kstar) ** (np.exp(-delta0))
-        #
-        #     resids = np.array([
-        #         np.exp(kstar) - (Phi) * np.exp(-a_k),
-        #         np.exp(-rho * cstar + (rho - 1) * (v0 + kstar)) \
-        #             * (np.exp(delta0) - 1) * (Phi) \
-        #             - PhiPrime,
-        #         r3
-        #     ])
-        #     return resids
-        #
-        # vstar, phi0, a_k0 = opt.root(g, np.array([-3.2, 13.807, .03])).x
-        # zstar = 0
 
-        # print("SS residuals", g([vstar, phi0, a_k0]))
+        zstar = 0
 
         A = A0
         delta = delta0
         a_k = a_k0
-        # print("rho: ", rho)
-        # print("vstar: ", vstar)
-        # print("phi: ", phi0)
-        # print("A: ", A0)
-        # print("a_k: ", a_k)
-        # print("residuals", g([vstar, phi0, a_k0]))
-        if calibrated:
-            phi = phi0
-        else:
-            phi = 10
-
-        """
-            # This means that we have changed a parameter and the steady state
-            # calculations from before are no longer valid. Therefore the
-            # calibrated parameters and the changed parameters are used to
-            # find a new steady state
-
-            def root_fun(C):
-                I_ = A - C
-                # Phi = 1 + I_ - phi/2 * I_**2
-                # PhiPrime = 1 - phi * I_
-                Phi = (1. + phi * I_) ** (1. / phi)
-                PhiPrime = (1. + phi * I_) ** (1. / phi - 1)
-                # Phi = 1 + np.log(1 + phi * I_) / phi
-                # PhiPrime = 1 / (1 + phi * I_)
-                K = (Phi) * np.exp(-a_k)
-                if rho != 1:
-                    residual = (np.exp(delta) - 1) * C ** -rho \
-                        * (K ** (rho - 1) - np.exp(-delta)) * (Phi) \
-                        - PhiPrime * (1 - np.exp(-delta)) \
-                        * C ** (1 - rho)
-                else:
-                    residual = (np.exp(delta) - 1) * C ** -1 \
-                        * K ** ((rho - 1) / (1 - np.exp(-delta))) * (Phi) \
-                        - (1 - phi * I_)
-                return residual
-
-            dom = np.linspace(1e-5, A, 100)
-            y = root_fun(dom)
-
-            ypos = y > 0
-            yneg = y < 0
-
-            # There are, for some parameter sets, two roots to this
-            # equation on the interval from 0 to A. We want to identify
-            # these situations and use the root which correstponds to V > 0
-            if (ypos[0] and ypos[-1] and (False in ypos)):
-                area = dom[yneg]
-                C1 = opt.brentq(root_fun, dom[0], area[0])
-                C2 = opt.brentq(root_fun, area[-1], dom[-1])
-
-                I1 = A - C1
-                # K1 = (1 + I1 - phi/2 * I1**2) * np.exp(-a_k)
-                K1 = (1. + phi * I1) ** (1. / phi) * np.exp(-a_k)
-                # K1 = (1 + np.log(1 + phi * I1) / phi) * np.exp(-a_k)
-                if rho != 1:
-                    V1 = (1 - np.exp(-delta)) * C1 ** (1 - rho) \
-                         / (1 - np.exp(-delta) *  K1 ** (1 - rho))
-                else:
-                    V1 = C1 ** (1 - np.exp(-delta)) * K1 ** (np.exp(-delta))
-
-                I2 = A - C2
-                # K2 = (1 + I2 - phi/2 * I2**2) * np.exp(-a_k)
-                K2 = (1. + phi * I2) ** (1. / phi) * np.exp(-a_k)
-                # K2 = (1 + np.log(1 + phi * I2) / phi) * np.exp(-a_k)
-                if rho != 1:
-                    V2 = (1 - np.exp(-delta)) * C2 ** (1 - rho) \
-                         / (1 - np.exp(-delta) * K2 ** (1 - rho))
-                else:
-                    V2 = C2 ** (1 - np.exp(-delta)) * K2 ** (np.exp(-delta))
-
-                if V1 > 0:
-                    Cstar = C1
-                else:
-                    Cstar = C2
-
-            elif (yneg[0] and yneg[-1] and (False in yneg)):
-                area = dom[ypos]
-                C1 = opt.brentq(root_fun, dom[0], area[0])
-                C2 = opt.brentq(root_fun, area[-1], dom[-1])
-
-                I1 = A - C1
-                # K1 = (1 + I1 - phi/2 * I1**2) * np.exp(-a_k)
-                K1 = (1. + phi * I1) ** (1. / phi) * np.exp(-a_k)
-                # K1 = (1 + np.log(1 + phi * I1) / phi) * np.exp(-a_k)
-                V1 = (1 - np.exp(-delta)) * C1 ** (1 - rho) \
-                     / (1 - np.exp(-delta) * K1 ** (1 - rho))
-                I2 = A - C2
-                # K2 = (1 + I2 - phi/2 * I2**2) * np.exp(-a_k)
-                K2 = (1. + phi * I2) ** (1. / phi) * np.exp(-a_k)
-                # K2 = (1 + np.log(1 + phi * I2) / phi) * np.exp(-a_k)
-                if rho != 1:
-                    V2 = (1 - np.exp(-delta)) * C2 ** (1 - rho) \
-                         / (1 - np.exp(-delta) *K2 ** (1 - rho))
-                else:
-                    V2 = C2 ** (1 - np.exp(-delta)) * K2 ** (np.exp(-delta))
-
-                if V1 > 0:
-                    Cstar = C1
-                else:
-                    Cstar = C2
-
-            else:
-                Cstar = opt.brentq(root_fun, 1e-5, A)
-
-            Istar = A - Cstar
-            # Kstar = (1 + Istar - phi/2 * Istar**2) * np.exp(-a_k)
-            Kstar = (1. + phi * Istar) ** (1. / phi) * np.exp(-a_k)
-            # Kstar = (1 + np.log(1 + phi * Istar) / phi) * np.exp(-a_k)
-            if rho != 1:
-                Vstar = ((1 - np.exp(-delta)) * Cstar ** (1 - rho)) \
-                        / (1 - np.exp(-delta) * Kstar ** (1 - rho))
-                        # This is actually Vstar ** (1 - rho)
-
-                Vstar = Vstar ** (1 / (1 - rho))
-            else:
-                Vstar = Cstar ** (1 - np.exp(-delta)) \
-                        * Kstar ** (np.exp(-delta))
-                Vstar = Vstar ** (1 / (1 - np.exp(-delta)))
-
-            cstar = np.log(Cstar)
-            istar = np.log(Istar)
-            kstar = np.log(Kstar)
-            vstar = np.log(Vstar)
-            zstar = 0
-        """
+        phi = phi0
 
     elif empirical == 2:
         raise ValueError("The specifications for C and V are not yet developed for this empirical case.")
@@ -313,21 +172,20 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
 
         zstar = 0
 
-        # print("rho: ", rho)
-        # print("vstar: ", vstar)
-        # print("phi: ", phi)
-        # print("A: ", A)
-        # print("a_k: ", a_k)
-        # print("cstar", np.exp(cstar))
-        # print("consumption investment", np.exp(cstar) / np.exp(istar))
-
     else:
         raise ValueError("'Empirical' must be 1 or 2.")
 
-    #print(A, phi, a_k)
+    #######################################################
+    #               Section 2: Model Solution             #
+    #######################################################
+
+    #######################################################
+    #       Section 2.1: Symbolic Model Declaration       #
+    #######################################################
 
     # Declare necessary symbols in sympy notation
     # Note that the p represents time, so k = k_t and kp = k_{t+1}
+
     k, kp, c, cp, v, vp, z, zp = symbols("k kp c cp v vp z zp")
 
     # Set up the equations from the model in sympy
@@ -337,10 +195,10 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
     I = A - exp(c) # I_t / K_t
     # NEW FUNCTION
 #     i = 1 + I - phi / 2 * I ** 2 # Joe's version of I; also I^*/K_t
-    i = (1. + phi * I) ** (1. / phi)
+    i = (1. + phi1 * I) ** (phi2)
     # i = 1 + log(phi * I + 1)/phi
 #     phip = 1 - phi * I
-    phip = (1. + phi * I) ** (1. / phi - 1)
+    phip = phi1 * phi2 * (1. + phi1 * I) ** (phi2 - 1)
     # phip = 1 / (phi * I + 1)
     r = vp + kp
 
@@ -367,7 +225,11 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
 
     substitutions = {k:kstar, kp:kstar, c:cstar, cp:cstar,
                      v:vstar, vp:vstar, z:zstar, zp:zstar}
+    # print(substitutions)
 
+    #######################################################
+    #Section 2.2: Generalized Schur Decomposition Solution#
+    #######################################################
 
     # Take the appropriate derivatives and evaluate at steady state
     Amat = np.array([[eq.diff(var).evalf(subs=substitutions) for \
@@ -375,7 +237,7 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
     B = -np.array([[eq.diff(var).evalf(subs=substitutions) for var in \
                        current_vars] for eq in eqs]).astype(np.float)
 
-    # Substitute for k and c to reduce A and B to 2x2 matrices
+    # Substitute for k and c to reduce A and B to 2x2 matrices, noting that:
     # A[0,0]k_{t+1} - B[0,1]c = z
     # A[1,0]k_{t+1} - B[1,1]c = -A[1,2]v_{t+1}
     M = np.array([[Amat[0,0], -B[0,1]],[Amat[1,0], -B[1,1]]])
@@ -425,6 +287,10 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
 
     slopes = [k_loading, c_loading, i_loading, v_loading]
 
+    #######################################################
+    #          Section 3: First Order Adjustments         #
+    #######################################################
+
     sigz = np.array([.00011, .00025])
     sigk = np.array([.00477, 0.0])
 
@@ -462,6 +328,10 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
         print("Log slopes: k, c, i, v")
         print(slopes)
         print("\n")
+
+    #######################################################
+    #       Section 4: Impulse Response Generation        #
+    #######################################################
 
     z1 = np.zeros(T)
     z1[0] = sigz[0]
@@ -504,7 +374,9 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
 
 
 if __name__ == "__main__":
+    # Can be used for simple disgnostics
     r = float(sys.argv[1])
+    emp = float(sys.argv[2])
     solve_model(r, 10, 0.014, 200, risk_free_adj = 1,
-                                 empirical = 0,
+                                 empirical = emp,
                                  transform = False, shock = 1, verbose = True)
