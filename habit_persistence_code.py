@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 from sympy.solvers import solve
 from sympy import Symbol, exp, log, symbols, linear_eq_to_matrix
 
-
 # Set print options for numpy
 np.set_printoptions(suppress=True, threshold=3000)
 
@@ -209,7 +208,6 @@ def solve_habit_persistence(alpha=0.5, eta=2, psi=0.3, print_option=False):
         print('First check: Not passed')
         
     # Second Check
-    print('')
     check_eig = np.linalg.eig(A)[0]
     idx = np.abs(check_eig).argsort()[::-1]
     check_eig = check_eig[idx]
@@ -281,30 +279,30 @@ def habit_persistence_consumption_path(A, N1, N2, Ct, print_option=False):
     C_path_list = []
     CY_path_list = []
     
+    # Obtain coefficients of consumption-income ratio process C
+    """
+    Ct is the explicit formula of consumption ratio process 
+    imported from function: solve_habit_persistence
+    """
+    MKt1, MHt1, Ht, X1t1, X2t = symbols('MKt1 MHt1 Ht X1t1 X2t')
+    c_MKt1 = Ct.coeff(MKt1)
+    c_MHt1 = Ct.coeff(MHt1)
+    c_Ht = Ct.coeff(Ht)
+    c_X1t1 = Ct.coeff(X1t1)
+    c_X2t = Ct.coeff(X2t)
+    
+    # Compute the consumption-income ratio process C
     for n, Z_path in enumerate(Z_path_list):
-        # Compute the consumption-income ratio process C
         C_path = np.zeros(T)
         KH_path = Z_path[:2,:]   
         X_path = Z_path[2:,:] 
         MKMH_path = np.matmul(N1,KH_path) + np.matmul(N2,X_path)  
-
-        for t in range(T-1):
-            MK1 = MKMH_path[0,t+1]
-            MH1 = MKMH_path[1,t+1]
-            H = KH_path[1,t]
-            X11 = X_path[0,t+1]
-            X2 = X_path[2,t+1]
-            MKt1, MHt1, Ht, X1t1, X2t = symbols('MKt1 MHt1 Ht X1t1 X2t')
-            """
-            Ct is the explicit formula of consumption ratio process 
-            imported from function: solve_habit_persistence
-            """
-            C = Ct.subs([(MKt1,MK1),
-                         (MHt1,MH1),
-                         (Ht,H),
-                         (X1t1,X11),
-                         (X2t,X2)])
-            C_path[t] = C
+        MK1 = MKMH_path[0,1:T]
+        MH1 = MKMH_path[1,1:T]
+        H = KH_path[1,0:T-1]
+        X11 = X_path[0,1:T]
+        X2 = X_path[2,1:T]
+        C_path[:T-1] = c_MKt1 * MK1 + c_MHt1 * MH1 + c_Ht * H + c_X1t1 * X11 + c_X2t * X2
 
         # Compute the income process Y
         if n==0:
@@ -332,7 +330,7 @@ def habit_persistence_consumption_path(A, N1, N2, Ct, print_option=False):
 #==============================================================================
 def get_Sv(A, J, N1, N2, Ut):
     """
-    Solve for Su
+    Solve for Sv
     
     Input
     =========
@@ -352,14 +350,14 @@ def get_Sv(A, J, N1, N2, Ut):
     MKt, MHt, Kt, Ht, X1t, X2t, X2tL1 = symbols('MKt MHt Kt Ht X1t X2t X2tL1')
     MKt1, MHt1, Kt1, Ht1, X1t1, X2t1 = symbols('MKt1 MHt1 Kt1 Ht1 X1t1 X2t1')
     
-    T,_ = linear_eq_to_matrix([Ut],
-                              MKt, MHt, Kt, Ht, X1t, X2t, X2tL1,
-                              MKt1, MHt1, Kt1, Ht1, X1t1, X2t1)
+    TT,_ = linear_eq_to_matrix([Ut],
+                               MKt, MHt, Kt, Ht, X1t, X2t, X2tL1,
+                               MKt1, MHt1, Kt1, Ht1, X1t1, X2t1)
     #t1: Ut's coefficient under Z_t
-    t1 = T[:7]
+    t1 = TT[:7]
     t1 = np.array([t1]).astype(float)
     #t2: Ut's coefficient under Z_{t+1}
-    t2 = T[7:]
+    t2 = TT[7:]
     t2.append(0)    #X2t is 0 in t2 entry
     t2 = np.array([t2]).astype(float)
     
