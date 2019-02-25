@@ -457,3 +457,42 @@ def create_fig(R, C, fs=(8,8), X=40):
         ax.set_xlabel(r'Quarters')
     
     return fig, axes
+
+
+
+
+#==============================================================================
+# Function: Plot the habit persistence consumption responses
+#==============================================================================
+def plot_habit_consumption_path(α,ψ,η):
+    """
+    Create the habit persistence consumption response plots.
+    
+    Input
+    ==========
+    α : share parameter
+    ψ : depreciation rate, 0≤exp⁡(−ψ)<1 
+    η : elasticity of substitution
+ 
+    Output
+    ==========
+    
+    """    
+    # Solve the habit persistence model
+    J, A, N1, N2, Ct, Ut = solve_habit_persistence(alpha = α, psi = ψ, eta = η)
+    
+    # Compute the time paths for the consumption responses 
+    C1Y1, C2Y2 = habit_persistence_consumption_path(A, N1, N2, Ct)
+    
+    # Plot
+    p_args = {'lw': 2, 'alpha': 0.7}
+    fig, axes = create_fig(2,1,X=40) # 40 periods
+    ax = axes[0]
+    ax.set_ylim(0.1, 0.6)
+    ax.plot(list(range(T)), C1Y1, **p_args)
+    ax = axes[1]
+    ax.set_ylim(-0.2, 0.3)
+    ax.plot(list(range(T)), C2Y2, **p_args)
+    plt.show()
+    
+    return
