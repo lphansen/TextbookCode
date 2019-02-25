@@ -53,14 +53,14 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
             delta = .02 / 4
 
         if empirical == 0.5:
-            # Joe model annual params
+            # Low adjustment cost model annual params
             # a_k = .05
             # phi1 = 3.
             # phi2 = 1. / phi1
             # A = .14
             # delta = .05
 
-            # Joe model quarterly params
+            # Low adjustment cost model quarterly params
             a_k = .05 / 4
             phi1 = 3. * 4
             phi2 = 1. / phi1
@@ -194,7 +194,7 @@ def solve_model(rho, gam, zeta, T, verbose = False, transform = False,
 
     I = A - exp(c) # I_t / K_t
     # NEW FUNCTION
-#     i = 1 + I - phi / 2 * I ** 2 # Joe's version of I; also I^*/K_t
+#     i = 1 + I - phi / 2 * I ** 2 # quadratic version of I; also I^*/K_t
     i = (1. + phi1 * I) ** (phi2)
     # i = 1 + log(phi * I + 1)/phi
 #     phip = 1 - phi * I
