@@ -2,488 +2,528 @@ import numpy as np
 np.set_printoptions(precision=4, suppress=True)
 from sympy import log, exp, symbols
 import scipy.optimize as opt
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import scipy.linalg as la
-import matplotlib.pyplot as plt
 import scipy.io as sio
 import sys
 import pprint
 from scipy import linalg as la
 import os
+import pandas as pd
+try:
+    import plotly.graph_objs as go
+    from plotly.tools import make_subplots
+    from plotly.offline import init_notebook_mode, iplot
+except ImportError:
+    print("Installing plotly. This may take a while.")
+    from pip._internal import main as pipmain
+    pipmain(['install', 'plotly'])
+    import plotly.graph_objs as go
+    from plotly.tools import make_subplots
+    from plotly.offline import init_notebook_mode, iplot
 
-alpha_c = 0.00484
-IoverK = 0.074
-CoverI = 2.556
-alpha_d = 0
+class stochastic_growth_model:
+    def __init__(self, rho, phi1, phi2, a_k, A, delta, beta1, beta2):
+        self.rho = rho
+        self.phi1 = phi1
+        self.phi2 = phi2
+        self.a_k = a_k
+        self.A = A
+        self.delta = delta
+        self.solved = False
+        self.beta1 = beta1
+        self.beta2 = beta2
 
-def solve_model(rho, gam, T, phi1, phi2, verbose = False, transform = False,
-                empirical = 1, calibrated = True, risk_free_adj = 1, shock = 1,
-                verbose_ss = False):
-
-    #######################################################
-    #                Section 1: Calibration               #
-    #######################################################
-
-    if empirical == 0 or empirical == 0.5:
-        beta2 = 0.0022
-        zeta = 0.014
-        # Calibrated params old model
-        # a_k = 0.03191501061172916
-        # phi = 13.353240248981844
-        # A = 0.26314399999999993
-        # delta = 0.007 * risk_free_adj - alpha_c * rho
-
-        # Original, randomly selected params
-        # a_k = 0.017
-        # phi = 13.807 / 2
-        # A = 0.052
-        # delta = 0.025
-
-
-        if empirical == 0:
-            # Eberly Wang annual params
-            # a_k = .1
-            # phi2 = 100
-            # phi1 = .05
-            # # A = 0.1 + .004
-            # A = 0.1 + .042
-            # delta = .02
-
-            # Eberly Wang quarterly params
-            a_k = .1 / 4
-            # phi2 = 100 * 4
-            # phi1 = .05 / 4
-            A = (.1 + .042) / 4
-            delta = .02 / 4
-
-        if empirical == 0.5:
-            # Low adjustment cost model annual params
-            # a_k = .05
-            # phi2 = 3.
-            # phi1 = 1. / phi1
-            # A = .14
-            # delta = .05
-
-            # Low adjustment cost model quarterly params
-            a_k = .05 / 4
-            # phi2 = 3. * 4
-            # phi1 = 1. / phi1
-            A = .14 / 4
-            delta = .05 / 4
-
+    def find_steady_state(self):
         def f(c):
-            Phi = (1 + phi2 * (A - np.exp(c)))**(phi1)
-            Phiprime = phi2 * phi1 * (1 + phi2 * (A - np.exp(c)))**(phi1 - 1)
-            k = np.log(Phi) - a_k
+            Phi = (1 + self.phi2 * (self.A - np.exp(c)))**(self.phi1)
+            Phiprime = self.phi2 * self.phi1 * \
+                (1 + self.phi2 * (self.A - np.exp(c)))**(self.phi1 - 1)
+            k = np.log(Phi) - self.a_k
 
-            if rho == 1:
-                v = c + k * np.exp(-delta) / (1 - np.exp(-delta))
+            if self.rho == 1:
+                v = c + k * np.exp(-self.delta) / (1 - np.exp(-self.delta))
             else:
-                v = np.log((1 - np.exp(-delta)) * np.exp(c * (1 - rho)) / (1 - np.exp(-delta + k * (1 - rho)))) / (1 - rho)
+                v = np.log((1 - np.exp(-self.delta)) * np.exp(c * (1 - self.rho)) / \
+                           (1 - np.exp(-self.delta + k * (1 - self.rho)))) / (1 - self.rho)
 
-            r1 = Phiprime - (np.exp(delta) - 1) * Phi * np.exp(c * -rho + (v + k) * (rho - 1))
+            r1 = Phiprime - (np.exp(self.delta) - 1) * Phi * np.exp(c * -self.rho + (v + k) * (self.rho - 1))
             return r1
 
+        interval_min = -40
+        interval_max = np.log(self.A)
 
-        sol = opt.bisect(f, -10, np.log(A), disp = True)
-        cstar = sol
-        # print(f(cstar))
-        def v(c):
-            Phi = (1 + phi2 * (A - np.exp(c)))**(phi1)
-            # Phiprime = phi2 * phi1 * (1 + phi2 * (A - np.exp(c)))**(phi1 - 1)
-            k = np.log(Phi) - a_k
-
-            if rho == 1:
-                v = c + k * np.exp(-delta) / (1 - np.exp(-delta))
-            else:
-                v = np.log((1 - np.exp(-delta)) * np.exp(c * (1 - rho)) / (1 - np.exp(-delta + k * (1 - rho)))) / (1 - rho)
-
-            # r1 = Phiprime - (np.exp(delta) - 1) * Phi * np.exp(c * -rho + (v + k) * (rho - 1))
-            return v
-
-        def denom(c):
-            Phi = (1 + phi2 * (A - np.exp(c)))**(phi1)
-            # Phiprime = phi2 * phi1 * (1 + phi2 * (A - np.exp(c)))**(phi1 - 1)
-            k = np.log(Phi) - a_k
-            return (1 - np.exp(-delta + k * (1 - rho)))
-        def k(c):
-            Phi = (1 + phi2 * (A - np.exp(c)))**(phi1)
-            # Phiprime = phi2 * phi1 * (1 + phi2 * (A - np.exp(c)))**(phi1 - 1)
-            k = np.log(Phi) - a_k
-            return k
-
-        dom = np.linspace(-10, np.log(A), 500)
+        # dom = np.linspace(interval_min, interval_max, 100)
         # plt.plot(dom, f(dom))
-        # plt.plot(dom, v(dom))
-        # plt.subplot(1,2,1)
-        # plt.plot(dom, denom(dom), label='denominator')
-        # plt.plot(dom, k(dom), label='k')
-        # plt.plot(dom, np.zeros_like(dom))
-        # plt.plot(dom, np.ones_like(dom) * delta / (1 - rho), label = r'$\frac{\delta}{(1 - \rho)}$')
-        # plt.legend()
-        # plt.subplot(1,2,2)
-        # plt.plot(dom, f(dom), label = 'Root function')
-        # plt.legend()
         # plt.show()
 
-        if np.min(np.abs(cstar - np.array([-10, np.log(A)]))) < 1e-8:
-            raise ValueError("Not actually solved")
+        self.cstar = opt.bisect(f, interval_min, interval_max, disp = True)
 
-        Phi = (1 + phi2 * (A - np.exp(cstar)))**(phi1)
-        Phiprime = phi2 * phi1 * (1 + phi2 * (A - np.exp(cstar)))**(phi1 - 1)
+        if np.min(np.abs(self.cstar - np.array([interval_min, interval_max]))) < 1e-8:
+            raise ValueError("Steady states not found for rho = {}. Try decreasing depreciation.".format(self.rho))
 
-        kstar = np.log(Phi) - a_k
-        istar = np.log(A - np.exp(cstar))
+        Phi = (1 + self.phi2 * (self.A - np.exp(self.cstar)))**(self.phi1)
+        Phiprime = self.phi2 * self.phi1 * \
+            (1 + self.phi2 * (self.A - np.exp(self.cstar)))**(self.phi1 - 1)
 
-        if rho == 1:
-            vstar = cstar + kstar * np.exp(-delta) / (1 - np.exp(-delta))
+        self.kstar = np.log(Phi) - self.a_k
+        self.istar = np.log(self.A - np.exp(self.cstar))
+
+        if self.rho == 1:
+            self.vstar = self.cstar + self.kstar * np.exp(-self.delta) / (1 - np.exp(-self.delta))
         else:
-            vstar = np.log((1 - np.exp(-delta)) * np.exp(cstar * (1 - rho)) / (1 - np.exp(-delta + kstar * (1 - rho)))) / (1 - rho)
+            self.vstar = np.log((1 - np.exp(-self.delta)) * \
+                           np.exp(self.cstar * (1 - self.rho)) / \
+                           (1 - np.exp(-self.delta + self.kstar * (1 - self.rho)))) / \
+                           (1 - self.rho)
 
-        istar = np.log(A - np.exp(cstar))
+        self.zstar = 0
 
-        zstar = 0
-        dstar = 0
+    def solve_model(self):
+        k, kp, c, cp, v, vp, zo, zop, zt, ztp = symbols("k kp c cp v vp zo zop zt ztp")
 
-    # Calculate parameters using empirical targets
-    elif empirical == 1:
-        # Use all empirical targets with all parameters free
-        istar = np.log(IoverK)
-        cstar = np.log(CoverI * np.exp(istar))
-        delta0 = 0.007 * risk_free_adj - alpha_c * rho
-        A0 = np.exp(istar) + np.exp(cstar)
-        kstar = alpha_c
+        # k = log(K_t / K_{t-1})
+        # c = log(C_t / K_t)
+        # v = log(V_t / K_t)
+        # zo = Z_{t,1}
+        # zt = Z_{t,2}
+        # d = log(D_t / D_{t+1})
 
-        def f(v0):
-            if rho != 1:
-                r3 = np.exp(v0) ** (1 - rho) - (1 - np.exp(-delta0)) \
-                     * np.exp(cstar) ** (1 - rho) - np.exp(-delta0) \
-                     * (np.exp(v0) * np.exp(kstar)) ** (1 - rho)
-            else:
-                r3 = np.exp(v0) ** (1 - np.exp(-delta0)) \
-                     - np.exp(cstar) ** (1 - np.exp(-delta0)) \
-                     * np.exp(kstar) ** (np.exp(-delta0))
+        # Note that dp = zt, so we can replace dp in the code with zt. We
+        # do this for simplicity.
 
-            return r3
+        # Set up the equations from the model in sympy
+        # The equations come from subtracting the right side from the left of the
+        # log linearized governing equations
 
-        vstar = opt.root(f, -3.2).x[0]
+        I = self.A - exp(c) # I_t / K_t
+        i = (1. + self.phi2 * I) ** (self.phi1)
+        phip = self.phi2 * self.phi1 * (1. + self.phi2 * I) ** (self.phi1 - 1)
+        r = vp + kp + zt
 
-        def g(phi):
-            Phi = (1. + phi * np.exp(istar)) ** (1. / phi)
-            PhiPrime = (1. + phi * np.exp(istar)) ** (1. / phi - 1)
-            return np.exp(-rho * cstar + (rho - 1) * (vstar + kstar)) \
-                * (np.exp(delta0) - 1) * (Phi) \
-                - PhiPrime
+        # Equation 1: Capital Evolution
+        eq1 = kp - log(i) + self.a_k - zo
 
-        phi0 = opt.root(g, 700).x[0]
+        # Equation 2: First Order Conditions on Consumption
+        eq2 = log(exp(self.delta) - 1) - self.rho * c + (self.rho - 1) * r + \
+                        log(i) - log(phip)
 
-        a_k0 = np.log((1. + phi0 * np.exp(istar)) ** (1. / phi0)) - kstar
-
-        zstar = 0
-
-        A = A0
-        delta = delta0
-        a_k = a_k0
-        phi = phi0
-
-    elif empirical == 2:
-        raise ValueError("The specifications for C and V are not yet developed for this empirical case.")
-        # Fix phi = 0 and free C/I
-        I = IoverK
-        istar = np.log(I)
-        phi = 0
-        delta = 0.007 * risk_free_adj - alpha_c * rho
-        kstar = alpha_c
-        G = np.exp(kstar)
-        a_k = np.log(1 + I) - kstar
-
-        if (-delta + (1 - rho) * kstar) >= 0:
-            raise ValueError(("The constraint to solve for V is not"
-                              "satisfied for rho = {}").format(rho))
-
-        if rho != 1:
-            C = (np.exp(delta) - 1) * (G ** (rho - 1) - np.exp(-delta)) \
-                * (1 + I) / (1 - np.exp(-delta))
-            V = ((1 - np.exp(-delta)) * C ** (1 - rho) \
-                / (1 - np.exp(-delta) * G ** (1 - rho))) ** (1 / (1 - rho))
+        # Equation 3: Value Function Evolution: rho == 1 is separate case
+        if self.rho != 1:
+            eq3 = exp(v * (1 - self.rho))  - ((1 - exp(-self.delta)) * \
+                    exp((1 - self.rho) * c) + exp(-self.delta) * \
+                    exp((1 - self.rho) * r))
         else:
-            C = (np.exp(delta) - 1) * G ** ((rho - 1) / (1 - np.exp(-delta))) \
-                * (1 + I)
-            V = C * G ** (np.exp(-delta) / (1 - np.exp(-delta)))
+            eq3 = v - (1 - exp(-self.delta)) * c - exp(-self.delta) * r
 
-        cstar = np.log(C)
-        vstar = np.log(V)
+        # Equations 4 and 5: Shock Processes Evolution
+        eq4 = zop - exp(-self.beta1) * zo
+        eq5 = ztp - exp(-self.beta2) * zt
 
-        A = np.exp(cstar) + np.exp(istar)
+        eqs = [eq1, eq2, eq3, eq4, eq5]
+        lead_vars = [kp, cp, vp, zop, ztp]
+        current_vars = [k, c, v, zo, zt]
 
-        zstar = 0
+        substitutions = {k:self.kstar, kp:self.kstar, c:self.cstar,
+                         cp:self.cstar, v:self.vstar, vp:self.vstar,
+                         zo:self.zstar, zop:self.zstar, zt:self.zstar,
+                         ztp:self.zstar}
 
+        #######################################################
+        #       Generalized Schur Decomposition Solution      #
+        #######################################################
+
+        # Take the appropriate derivatives and evaluate at steady state
+        Amat = np.array([[eq.diff(var).evalf(subs=substitutions) for \
+                          var in lead_vars] for eq in eqs]).astype(np.float)
+        B = -np.array([[eq.diff(var).evalf(subs=substitutions) for var in \
+                           current_vars] for eq in eqs]).astype(np.float)
+
+        # Substitute for k and c to reduce A and B to 2x2 matrices, noting that:
+        # A[0,0]kp - B[0,1]c = zo
+        # A[1,0]kp - B[1,1]c = B[1,4]zt - A[1,2]vp
+
+        M = np.array([[Amat[0,0], -B[0,1]],[Amat[1,0], -B[1,1]]])
+        Minv = la.inv(M)
+
+        # kp = Minv[0,0] * zo + Minv[0,1] * (B[1,4]zt - A[1,2]vp)      (1)
+        # c  = Minv[1,0] * zo + Minv[1,1] * (B[1,4]zt - A[1,2]vp)      (2)
+
+        # So the system can be reduced in the following way:
+        Anew = np.copy(Amat[2:,2:])
+        Bnew = np.copy(B[2:,2:])
+
+        # Update the column of Anew corresponding to vp, subbing in with (1)
+        Anew[:,0] += Minv[0,1] * Amat[2:,0] * (-Amat[1,2])
+        # Update the column of Bnew corresponding to zo, subbing in with (1)
+        Bnew[:,1] -= Minv[0,0] * Amat[2:,0]
+        # Update the column of Bnew corresponding to zt, subbing in with (1)
+        Bnew[:,2] -= Minv[0,1] * Amat[2:,0] * B[1,4]
+
+        # Update the column of Anew corresponding to vp, subbing in with (2)
+        Anew[:,0] -= Minv[1,1] * B[2:,1] * (-Amat[1,2])
+        # Update the column of Bnew corresponding to zo, subbing in with (2)
+        Bnew[:,1] += Minv[1,0] * B[2:,1]
+        # Update the column of Bnew corresponding to zt, subbing in with (2)
+        Bnew[:,2] += Minv[1,1] * B[2:,1] * B[1,4]
+
+        # Compute the generalized Schur decomposition of the reduced A and B,
+        # sorting so that the explosive eigenvalues are in the bottom right
+
+        BB, AA, a, b, Q, Z = la.ordqz(Bnew, Anew, sort='iuc')
+
+        total_dim = len(Anew)
+        # a/b is a vector of the generalized eiganvals
+        exp_dim = len(a[np.abs(a/b) > 1])
+        stable_dim = total_dim - exp_dim
+
+        # if verbose:
+        #     print("Rho = {}".format(rho))
+        #     # print(-delta + (1 - rho) * kstar)
+        #     print(("{} out of {} eigenvalues were found to be"
+        #            " unstable.").format(exp_dim, total_dim))
+
+        J1 = Z.T[stable_dim:,:exp_dim][0][0]
+        J2 = Z.T[stable_dim:,exp_dim:][0]
+
+        # J1v = J2 @ [zo, zt]
+        self.v_loading = -(J2/J1)
+
+        # Recall the following identities:
+        # kp = Minv[0,0] * zo + Minv[0,1] * (B[1,4]zt - A[1,2]vp)      (1)
+        # c  = Minv[1,0] * zo + Minv[1,1] * (B[1,4]zt - A[1,2]vp)      (2)
+
+        # Rewrite as
+        # kp = -Minv[0,1]*A[1,2]vp + Minv[0,0]zo + Minv[0,1]*B[1,4]zt  (1)
+        # c  = -Minv[1,1]*A[1,2]vp + Minv[1,0]zo + Minv[1,1]*B[1,4]zt  (2)
+
+        self.k_loading = - Minv[0,1] * Amat[1,2] * self.v_loading
+        self.c_loading = - Minv[1,1] * Amat[1,2] * self.v_loading * \
+            np.array([np.exp(-self.beta1), np.exp(-self.beta2)])
+
+        # Add the zo and zt specific dependencies to each entry of each vector
+        self.k_loading += np.array([Minv[0,0], Minv[0,1] * B[1,4]]) * \
+            np.array([np.exp(self.beta1), np.exp(self.beta2)])
+        self.c_loading += np.array([Minv[1,0], Minv[1,1]])
+
+        self.i_loading = (-exp(self.cstar) * self.c_loading / \
+                          exp(self.istar)).astype(np.float)
+        self.solved = True
+
+    def gen_impulse_response(self, shock, T, gam, B, sigk, sigd):
+        selector = np.zeros(4)
+        selector[shock - 1] = 1
+
+        A = np.array([[np.exp(-self.beta1), 0], [0, np.exp(-self.beta2)]])
+
+        #######################################################
+        #       Section 4: Impulse Response Generation        #
+        #######################################################
+
+        Z = np.zeros((2,T))
+        Z[:,0] = B@selector
+        for i in range(1,T):
+            Z[:,i] = A @ Z[:,i-1]
+
+        temp = np.zeros(T)
+        temp[0] = sigd @ selector
+        temp[1:] = Z[1,:-1]
+        Z[1] = temp
+
+        # Note that since dp = zt + sigma_d @ Wp, we can convert the second row
+        # of Z to d by simply adding
+
+        if shock not in [1,2,3, 4]:
+            raise ValueError("'shock' parameter must be set to 1, 2, 3, or 4.")
+
+        K = np.zeros(T)
+        S = np.zeros(T)
+        C = np.zeros(T)
+        I = np.zeros(T)
+
+        K[0] = sigk @ selector
+        for p in range(1,T):
+            K[p] = K[p-1] + self.k_loading @ Z[:,p]
+
+        S[0] = -self.rho * self.c_loading @ Z[:,0] + (1 - self.rho) * Z[1,0] + \
+                     (self.rho - gam) * ((self.v_loading @ B) + \
+                         sigk + sigd)[shock - 1] - self.rho * K[0]
+
+        for p in range(1,T):
+            S[p] = S[p-1] - self.rho * self.c_loading @ (Z[:,p] - Z[:,p-1]) \
+                    - self.rho * self.k_loading @ Z[:,p] + (1 - self.rho) * Z[1,p]
+
+        C = self.c_loading @ Z + K
+
+        I = self.i_loading @ Z + K
+
+        self.S_response = -S.astype(np.float)
+        self.K_response = K.astype(np.float)
+        self.C_response = C.astype(np.float)
+        self.I_response = I.astype(np.float)
+
+    def print_model_solution_data(self):
+        levels = [self.kstar, self.cstar, self.istar, self.vstar]
+        slopes1 = [self.k_loading[0], self.c_loading[0], self.i_loading[0], self.v_loading[0]]
+        slopes2 = [self.k_loading[1], self.c_loading[1], self.i_loading[1], self.v_loading[1]]
+        if self.solved:
+            print("Log Levels: k, c, i, v")
+            print(levels)
+            print("Log slopes, growth shock: k, c, i, v")
+            print(slopes1)
+            print("Log slopes, preference shock: k, c, i, v")
+            print(slopes2)
+            print("\n")
+
+def bound_phi2(delta, rho, a_k, phi1phi2, a):
+
+    def root_function(phi2):
+        return phi1phi2 / phi2 * np.log(1 + phi2 * a) - a_k - delta / (1 - rho)
+    sol = opt.root(root_function, 100)
+    if sol.success:
+        return sol
     else:
-        raise ValueError("'Empirical' must be 1 or 2.")
+        sol = opt.root(root_function, 10)
+        return sol
 
-    #######################################################
-    #               Section 2: Model Solution             #
-    #######################################################
+def plot_impulse(rhos, gammas, T, phi1, phi2, a_k, A, delta, beta1, beta2,
+                 B, sigd, sigk, shock = 1, title = None):
+    """
+    Given a set of parameters, computes and displays the impulse responses of
+    consumption, capital, the consumption-investment ratio, along with the
+    shock price elacticities.
 
-    #######################################################
-    #       Section 2.1: Symbolic Model Declaration       #
-    #######################################################
+    Input
+    ==========
+    Note that the values of delta, phi, A, and a_k are specified within the code
+    and are only used for the empirical_method = 0 or 0.5 specifications (see below).
 
-    # Declare necessary symbols in sympy notation
-    # Note that the p represents time, so k = k_t and kp = k_{t+1}
+    rhos:               The set of rho values for which to plot the IRFs.
+    gamma:              The risk aversion of the model.
+    betaz:              Shock persistence.
+    T:                  Number of periods to plot.
+    shock:              (1 or 2) Defines which of the two possible shocks to plot.
+    empirical method:   Use 0 to use Eberly and Wang parameters and 0.5 for parameters
+                        from a low adjustment cost setting. Further cases still under
+                        development.
+    transform_shocks:   True or False. True to make the rho = 1 response to
+                        shock 2 be transitory.
+    title:              Title for the image plotted.
+    """
+    colors = ['blue', 'green', 'red', 'black', 'cyan', 'magenta', 'yellow', 'black']
+    mult_fac = len(rhos) // len(colors) + 1
+    colors = colors * mult_fac
 
-    k, kp, c, cp, v, vp, zo, zop, zt, ztp = symbols("k kp c cp v vp zo zop zt ztp")
+    smin = 0
+    smax = 0
+    kmin = 0
+    kmax = 0
+    cmin = 0
+    cmax = 0
+    dmin = 0
+    dmax = 0
+    imin = 0
+    imax = 0
 
-    # k = log(K_t / K_{t-1})
-    # c = log(C_t / K_t)
-    # v = log(V_t / K_t)
-    # zo = Z_{t,1}
-    # zt = Z_{t,2}
-    # d = log D_t
+    fig = make_subplots(3, 2, print_grid = False, specs=[[{}, {}], [{}, {}], [{'colspan': 2}, None]])
 
-    # Set up the equations from the model in sympy
-    # The equations come from subtracting the right side from the left of the
-    # log linearized governing equations
+    rtable = []
+    ktable = []
+    ctable = []
+    itable = []
+    qtable = []
 
-    I = A - exp(c) # I_t / K_t
-    # NEW FUNCTION
-#     i = 1 + I - phi / 2 * I ** 2 # quadratic version of I; also I^*/K_t
-    i = (1. + phi2 * I) ** (phi1)
-    # i = 1 + log(phi * I + 1)/phi
-#     phip = 1 - phi * I
-    phip = phi2 * phi1 * (1. + phi2 * I) ** (phi1 - 1)
-    # phip = 1 / (phi * I + 1)
-    r = vp + kp + zt
+    for i, r in enumerate(rhos):
 
-    # Equation 1: Capital Evolution
-    eq1 = kp - log(i) + a_k - zo
+        model = stochastic_growth_model(r, phi1, phi2, a_k, A, delta, beta1, beta2)
+        model.find_steady_state()
+        model.solve_model()
 
-    # Equation 2: First Order Conditions on Consumption
-    eq2 = log(exp(delta) - 1) - rho * c + (rho - 1) * r + \
-                    log(i) - log(phip)
+        for j, gamma in enumerate(gammas):
 
+            model.gen_impulse_response(shock, T, gamma, B, sigk, sigd)
+            S = model.S_response
+            K = model.K_response
+            C = model.C_response
+            I = model.I_response
 
-    # Equation 3: Value Function Evolution: rho == 1 is separate case
-    if rho != 1:
-        eq3 = exp(v * (1 - rho))  - ((1 - exp(-delta)) * exp((1 - rho) * c) \
-                            + exp(-delta) * exp((1 - rho) * r))
-    else:
-        eq3 = v - (1 - exp(-delta)) * c - exp(-delta) * r
+            if gamma == gammas[0]:
+                rtable.append(model.rho)
+                ktable.append(model.kstar * 4)
+                ctable.append(np.exp(model.cstar) * 4)
+                itable.append(np.exp(model.istar) * 4)
+                qtable.append((1 - np.exp(-delta)) * np.exp(model.vstar * (r - 1)) * np.exp(model.cstar * -r))
 
-    # Equations 4 and 5: Shock Processes Evolution
-    eq4 = zop - exp(-zeta) * zo
-    eq5 = ztp - exp(-beta2) * zt
+            dmin = min(dmin, np.min(C - K) * 1.2)
+            dmax = max(dmax, np.max(C - K) * 1.2)
+            smin = min(smin, np.min(S) * 0.012)
+            smax = max(smax, np.max(S) * 0.012)
+            kmin = min(kmin, np.min(K) * 1.2)
+            kmax = max(kmax, np.max(K) * 1.2)
+            cmin = min(cmin, np.min(C) * 1.2)
+            cmax = max(cmax, np.max(C) * 1.2)
+            imin = min(imin, np.min(I - K) * 1.2)
+            imax = max(imax, np.max(I - K) * 1.2)
 
+            fig.add_scatter(y = C, row = 1, col = 1, visible = j == 0,
+                            name = 'rho = {}'.format(r), line = dict(color = (colors[i])))
+            fig.add_scatter(y = K, row = 1, col = 2, visible = j == 0,
+                            name = 'rho = {}'.format(r), line = dict(color = (colors[i])))
+            fig.add_scatter(y = C - K, row = 2, col = 1, visible = j == 0,
+                            name = 'rho = {}'.format(r), line = dict(color = (colors[i])))
+            fig.add_scatter(y = I - K, row = 2, col = 2, visible = j == 0,
+                            name = 'rho = {}'.format(r), line = dict(color = (colors[i])))
+            fig.add_scatter(y = S / 100., row = 3, col = 1, visible = j == 0,
+                            name = 'rho = {}'.format(r), line = dict(color = (colors[i])))
 
+    df = pd.DataFrame({"Rho":rtable, "Log capital growth":ktable,
+                       "Consumption to Capital":ctable, "Investment to Capital":itable,
+                       "Q":qtable})
 
-    eqs = [eq1, eq2, eq3, eq4, eq5]
-    lead_vars = [kp, cp, vp, zop, ztp]
-    current_vars = [k, c, v, zo, zt]
+    steps = []
+    for i in range(len(gammas)):
+        step = dict(
+            method = 'restyle',
+            args = ['visible', ['legendonly'] * len(fig.data)],
+            label = 'γ = '+'{}'.format(round(gammas[i], 2))
+        )
+        for j in range(5):
+            for k in range(len(rhos)):
+                step['args'][1][i * 5 + j + k * len(gammas) * 5] = True
+        steps.append(step)
 
-    substitutions = {k:kstar, kp:kstar, c:cstar, cp:cstar,
-                     v:vstar, vp:vstar,
-                     zo:zstar, zop:zstar, zt:zstar, ztp:zstar}
-    # print(substitutions)
+    sliders = [dict(
+        steps = steps
+    )]
 
-    #######################################################
-    #Section 2.2: Generalized Schur Decomposition Solution#
-    #######################################################
+    fig.layout.sliders = sliders
+    fig['layout'].update(height=800, width=1000,
+                     title=title.format(shock), showlegend = False)
 
-    # Take the appropriate derivatives and evaluate at steady state
-    Amat = np.array([[eq.diff(var).evalf(subs=substitutions) for \
-                      var in lead_vars] for eq in eqs]).astype(np.float)
-    B = -np.array([[eq.diff(var).evalf(subs=substitutions) for var in \
-                       current_vars] for eq in eqs]).astype(np.float)
+    fig['layout']['xaxis1'].update(range = [0, T])
+    fig['layout']['xaxis2'].update(range = [0, T])
+    fig['layout']['xaxis3'].update(range = [0, T])
+    fig['layout']['xaxis4'].update(range = [0, T])#, title='Time (Quarters)')
+    fig['layout']['xaxis5'].update(range = [0, T])
 
-    # print(Amat)
-    # print(B)
-    # print(la.inv(Amat[:3, :3]))
+    fig['layout']['yaxis1'].update(title='Consumption', range = [cmin, cmax])
+    fig['layout']['yaxis2'].update(title='Capital', range=[kmin, kmax])
+    fig['layout']['yaxis3'].update(title='Consumption to Capital', range = [dmin, dmax])#showgrid=False)
+    fig['layout']['yaxis4'].update(title='Investment to Capital', range = [imin, imax])
+    fig['layout']['yaxis5'].update(title='Price Elasticity', range = [smin, smax])
 
-    # Substitute for k and c to reduce A and B to 2x2 matrices, noting that:
-    # A[0,0]kp - B[0,1]c = zo
-    # A[1,0]kp - B[1,1]c = B[1,4]zt - A[1,2]vp
-
-    M = np.array([[Amat[0,0], -B[0,1]],[Amat[1,0], -B[1,1]]])
-    Minv = la.inv(M)
-
-    # kp = Minv[0,0] * zo + Minv[0,1] * (B[1,4]zt - A[1,2]vp)      (1)
-    # c  = Minv[1,0] * zo + Minv[1,1] * (B[1,4]zt - A[1,2]vp)      (2)
-
-    # So the system can be reduced in the following way:
-    Anew = np.copy(Amat[2:,2:])
-    Bnew = np.copy(B[2:,2:])
-
-    # Update the column of Anew corresponding to vp, subbing in with (1)
-    Anew[:,0] += Minv[0,1] * Amat[2:,0] * (-Amat[1,2])
-    # Update the column of Bnew corresponding to zo, subbing in with (1)
-    Bnew[:,1] -= Minv[0,0] * Amat[2:,0]
-    # Update the column of Bnew corresponding to zt, subbing in with (1)
-    Bnew[:,2] -= Minv[0,1] * Amat[2:,0] * B[1,4]
-
-    # Update the column of Anew corresponding to vp, subbing in with (2)
-    Anew[:,0] -= Minv[1,1] * B[2:,1] * (-Amat[1,2])
-    # Update the column of Bnew corresponding to zo, subbing in with (2)
-    Bnew[:,1] += Minv[1,0] * B[2:,1]
-    # Update the column of Bnew corresponding to zt, subbing in with (2)
-    Bnew[:,2] += Minv[1,1] * B[2:,1] * B[1,4]
-
-    # Compute the generalized Schur decomposition of the reduced A and B,
-    # sorting so that the explosive eigenvalues are in the bottom right
-
-    BB, AA, a, b, Q, Z = la.ordqz(Bnew, Anew, sort='iuc')
-
-    total_dim = len(Anew)
-    # a/b is a vector of the generalized eiganvals
-    exp_dim = len(a[np.abs(a/b) > 1])
-    stable_dim = total_dim - exp_dim
-
-    if verbose:
-        print("Rho = {}".format(rho))
-        # print(-delta + (1 - rho) * kstar)
-        print(("{} out of {} eigenvalues were found to be"
-               " unstable.").format(exp_dim, total_dim))
-
-    J1 = Z.T[stable_dim:,:exp_dim][0][0]
-    J2 = Z.T[stable_dim:,exp_dim:][0]
-
-    # J1v = J2 @ [zo, zt]
-    v_loading = -(J2/J1)
-
-    # Recall the following identities:
-    # kp = Minv[0,0] * zo + Minv[0,1] * (B[1,4]zt - A[1,2]vp)      (1)
-    # c  = Minv[1,0] * zo + Minv[1,1] * (B[1,4]zt - A[1,2]vp)      (2)
-
-    # Rewrite as
-    # kp = -Minv[0,1]*A[1,2]vp + Minv[0,0]zo + Minv[0,1]*B[1,4]zt  (1)
-    # c  = -Minv[1,1]*A[1,2]vp + Minv[1,0]zo + Minv[1,1]*B[1,4]zt  (2)
-
-    k_loading = - Minv[0,1] * Amat[1,2] * v_loading
-    c_loading = - Minv[1,1] * Amat[1,2] * v_loading * np.exp(-zeta)
-
-    # Add the zo and zt specific dependencies to each entry of each vector
-    k_loading += np.array([Minv[0,0], Minv[0,1] * B[1,4]]) * np.exp(zeta)
-    c_loading += np.array([Minv[1,0], Minv[1,1]])
-
-    istar = np.log(A - np.exp(cstar))
-    i_loading = (-exp(cstar) * c_loading / exp(istar)).astype(np.float)
-
-    slopes1 = [k_loading[0], c_loading[0], i_loading[0], v_loading[0]]
-    slopes2 = [k_loading[1], c_loading[1], i_loading[1], v_loading[1]]
-
-    #######################################################
-    #          Section 3: First Order Adjustments         #
-    #######################################################
-
-    # sigz = np.array([.00011, .00025, 0.0])
-    # scriptB = np.array([[0.012, 0.027, 0, 0],[0, 0, 0.132, 0]]) * 0.01
-    # sigk = np.array([.00477, 0.0, 0.0, 0.0])
-    # scriptK = np.array([0.481, 0, 0, 0]) * 0.01
-
-    # Create first order adjustments on constant terms
-    # if verbose:
-    #     print("Making first order adjustments to constants.")
-
-    if transform:
-        sig = np.vstack((sigk, sigz))
-        s1 = sigk + sigz / (1 - np.exp(-zeta))
-        s1 = s1 / la.norm(s1)
-        s2 = s1[::-1] * np.array([-1,1])
-        s = np.column_stack((s2, s1))
-        snew = sig @ s
-
-        sigk = snew[0][::-1] * np.array([1,-1])
-        sigz = snew[1][::-1] * np.array([1,-1])
-
-        #print(np.array([sigk,sigz]) * 100)
-
-    selector = np.zeros(4)
-    selector[shock - 1] = 1
-    B = np.array([[0.011, 0.025, 0, 0],
-                  [0, 0, 0.119, 0]])
-    sigk = np.array([0.477, 0, 0, 0])
-    # sigk = np.array([0.477, 0, 0, 0]) * 0.01
-    sigd = np.array([0, 0, 0, 0])
-
-    # adjustment = - (1 - gam) / 2 * la.norm(v_loading * sigz + sigk) ** 2
-    # adjustment = - (1 - gam) / 2 * la.norm(v_loading @ scriptB + scriptK) ** 2
-    # adjustments = la.solve((Amat - B)[:3,:3], np.array([0,0,adjustment]))
-
-    # print(adjustments)
-    # kstar += adjustments[0]
-    # cstar += adjustments[1]
-    # vstar += adjustments[2]
-    # istar = log(A - np.exp(cstar))
-
-    levels = [kstar, cstar, istar, vstar]
-
-    if verbose:
-        print("Log Levels: k, c, i, v")
-        print(levels)
-        print("Log slopes, growth shock: k, c, i, v")
-        print(slopes1)
-        print("Log slopes, preference shock: k, c, i, v")
-        print(slopes2)
-        print("\n")
-
-    if verbose_ss:
-        print("Rho = {}:".format(rho))
-        print("\tLog capital growth: \t\t{0:.3f}".format(levels[0], 3))
-        print("\tConsumption to capital: \t{0:.3f}".format(np.exp(levels[1]), 3))
-        print("\tInvestment to capital: \t\t{0:.3f}".format(np.exp(levels[2]), 3))
-        print("\tQ: \t\t\t\t{0:.3f}".format( (1 - np.exp(-delta)) * np.exp(levels[3] * (rho - 1)) * np.exp(levels[1] * -rho), 3) )
-
-    Atransition = np.array([[np.exp(-zeta), 0], [0, np.exp(-beta2)]])
+    return df, fig
 
 
-    #######################################################
-    #       Section 4: Impulse Response Generation        #
-    #######################################################
+def plot_impulse_stationary(rhos, gamma, T, phi1, phi2, a_k, A, delta, beta1, beta2,
+                 B, sigd, sigk, shock = 1, title = None):
+    """
+    Given a set of parameters, computes and displays the impulse responses of
+    consumption, capital, the consumption-investment ratio, along with the
+    shock price elacticities.
 
-    Z = np.zeros((2,T))
-    Z[:,0] = B@selector
-    for i in range(1,T):
-        Z[:,i] = Atransition @ Z[:,i-1]
+    Input
+    ==========
+    Note that the values of delta, phi, A, and a_k are specified within the code
+    and are only used for the empirical_method = 0 or 0.5 specifications (see below).
 
-    if shock == 1 or shock == 2:
-        pass
-        # bool_marker = np.array([1,0])
-    elif shock == 3:
-        pass
-        # bool_marker = np.array([0, 1])
-    else:
-        raise ValueError("'shock' parameter must be set to 1, 2, or 3.")
+    rhos:               The set of rho values for which to plot the IRFs.
+    gamma:              The risk aversion of the model.
+    betaz:              Shock persistence.
+    T:                  Number of periods to plot.
+    shock:              (1 or 2) Defines which of the two possible shocks to plot.
+    empirical method:   Use 0 to use Eberly and Wang parameters and 0.5 for parameters
+                        from a low adjustment cost setting. Further cases still under
+                        development.
+    transform_shocks:   True or False. True to make the rho = 1 response to
+                        shock 2 be transitory.
+    title:              Title for the image plotted.
+    """
+    colors = ['blue', 'green', 'red', 'black', 'cyan', 'magenta', 'yellow', 'black']
+    mult_fac = len(rhos) // len(colors) + 1
+    colors = colors * mult_fac
 
-    K = np.zeros(T)
-    S = np.zeros(T)
-    C = np.zeros(T)
-    I = np.zeros(T)
+    smin = 0
+    smax = 0
+    kmin = 0
+    kmax = 0
+    cmin = 0
+    cmax = 0
+    dmin = 0
+    dmax = 0
+    imin = 0
+    imax = 0
 
-    K[0] = sigk @ selector
-    for p in range(1,T):
-        K[p] = K[p-1] + k_loading @ Z[:,p]
+    fig = make_subplots(3, 2, print_grid = False, specs=[[{}, {}], [{}, {}], [{'colspan': 2}, None]])
 
-    S[0] = -rho * c_loading @ Z[:,0] + (1 - rho) * Z[1,0] + \
-                 (rho - gam) * ((v_loading @ B) + sigk + sigd)[shock - 1] \
-                  - rho * K[0]
+    rtable = []
+    ktable = []
+    ctable = []
+    itable = []
+    qtable = []
 
-    for p in range(1,T):
-        S[p] = S[p-1] - rho * c_loading @ (Z[:,p] - Z[:,p-1]) \
-                - rho * k_loading @ Z[:,p] + (1 - rho) * Z[1,p]
+    for i, r in enumerate(rhos):
 
-    C = c_loading @ Z + K
+        model = stochastic_growth_model(r, phi1, phi2, a_k, A, delta, beta1, beta2)
+        model.find_steady_state()
+        model.solve_model()
+        model.gen_impulse_response(shock, T, gamma, B, sigk, sigd)
+        S = model.S_response
+        K = model.K_response
+        C = model.C_response
+        I = model.I_response
 
-    I = i_loading @ Z + K
+        dmin = min(dmin, np.min(C - K) * 1.2)
+        dmax = max(dmax, np.max(C - K) * 1.2)
+        smin = min(smin, np.min(S) * 0.012)
+        smax = max(smax, np.max(S) * 0.012)
+        kmin = min(kmin, np.min(K) * 1.2)
+        kmax = max(kmax, np.max(K) * 1.2)
+        cmin = min(cmin, np.min(C) * 1.2)
+        cmax = max(cmax, np.max(C) * 1.2)
+        imin = min(imin, np.min(I - K) * 1.2)
+        imax = max(imax, np.max(I - K) * 1.2)
 
-    return levels, slopes1, slopes2, np.array([-S.astype(np.float), K.astype(np.float),
-                                     C.astype(np.float), I.astype(np.float)])
+        fig.add_scatter(y = C, row = 1, col = 1, visible = True,
+                        name = 'rho = {}'.format(r),
+                        line = dict(color = (colors[i])), showlegend = False)
+        fig.add_scatter(y = K, row = 1, col = 2, visible = True,
+                        name = 'rho = {}'.format(r),
+                        line = dict(color = (colors[i])), showlegend = False)
+        fig.add_scatter(y = C - K, row = 2, col = 1, visible = True,
+                        name = 'rho = {}'.format(r),
+                        line = dict(color = (colors[i])), showlegend = False)
+        fig.add_scatter(y = I - K, row = 2, col = 2, visible = True,
+                        name = 'rho = {}'.format(r),
+                        line = dict(color = (colors[i])), showlegend = False)
+        fig.add_scatter(y = S / 100., row = 3, col = 1, visible = True,
+                        name = 'rho = {}'.format(r),
+                        line = dict(color = (colors[i])))
 
+    fig['layout']['xaxis1'].update(range = [0, T])
+    fig['layout']['xaxis2'].update(range = [0, T])
+    fig['layout']['xaxis3'].update(range = [0, T])
+    fig['layout']['xaxis4'].update(range = [0, T])#, title='Time (Quarters)')
+    fig['layout']['xaxis5'].update(range = [0, T])
+
+    fig['layout']['yaxis1'].update(title='Consumption', range = [cmin, cmax])
+    fig['layout']['yaxis2'].update(title='Capital', range=[kmin, kmax])
+    fig['layout']['yaxis3'].update(title='Consumption to Capital', range = [dmin, dmax])#showgrid=False)
+    fig['layout']['yaxis4'].update(title='Investment to Capital', range = [imin, imax])
+    fig['layout']['yaxis5'].update(title='Price Elasticity', range = [smin, smax])
+
+    fig['layout']['width'] = 1000
+    fig['layout']['height'] = 700
+    fig['layout']['title'] = title.format(shock)
+
+    return fig
 
 if __name__ == "__main__":
     # Can be used for simple disgnostics
     r = .5
-    # r = float(sys.argv[1])
-    emp = 0
-    phi2 = 400
-    solve_model(r, 10, 0.014, 200, 5./phi2, phi2, risk_free_adj = 1,
-                                 empirical = emp,
-                                 transform = False, shock = 1, verbose = True)
+    phi2 = 100
+    model = stochastic_growth_model(r, 5./phi2, phi2, 0.025, 0.036, 0.005, 0.014, 0.0022)
+    model.find_steady_state()
+    model.solve_model()
