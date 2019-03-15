@@ -75,9 +75,9 @@ alpha_k = widgets.BoundedFloatText( ## death rate
 )
 phi1 = widgets.BoundedFloatText( ## death rate
     value=0.0125,
-    min = 0.001,
-    max = 1,
-    step=0.0001,
+    min = 0.00001,
+    max = 10000,
+    step=0.00001,
     disabled=False,
     description = '$\phi_1$',
     style = style_med,
@@ -85,9 +85,9 @@ phi1 = widgets.BoundedFloatText( ## death rate
 )
 phi2 = widgets.BoundedFloatText( ## death rate
     value=400,
-    min = 0.001,
-    max = 1000,
-    step=0.0001,
+    min = 0.00001,
+    max = 10000,
+    step=0.00001,
     disabled=False,
     description = '$\phi_2$',
     style = style_med,
@@ -286,7 +286,7 @@ shock = widgets.BoundedIntText( ## death rate
     layout = Layout(width='70%')
 )
 timeHorizon = widgets.BoundedIntText( ## death rate
-    value=200,
+    value=160,
     min = 10,
     max = 2000,
     step=10,
