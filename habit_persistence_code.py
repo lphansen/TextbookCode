@@ -2,13 +2,13 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 from sympy.solvers import solve
+from sympy.solvers.solveset import linsolve
 from sympy import Symbol, exp, log, symbols, linear_eq_to_matrix
 
 # Set print options for numpy
 np.set_printoptions(suppress=True, threshold=3000)
 
 # Define parameters
-T = 2000        # Time horizon
 S = 2           # Impulse date
 σ1 = 0.108*1.33 # Permanent shock
 σ2 = 0.155*1.33 # Transitory shock
@@ -40,7 +40,7 @@ Fy = np.array([σ1,σ2])
 #==============================================================================
 # Function: Solve for J matrix and matrix for stable dynamics
 #==============================================================================
-def solve_habit_persistence(alpha=0.5, eta=2, psi=0.3, print_option=False):
+def solve_habit_persistence(alpha=0.5, psi=0.3, eta=2, print_option=False):
     """
     This function solves the matrix J and stable dynamic matrix A
     in Habit Persistence Section of the RA notes. Here we assume
@@ -111,9 +111,8 @@ def solve_habit_persistence(alpha=0.5, eta=2, psi=0.3, print_option=False):
            exp(-δ - ν)*(exp(mk) - (1 - exp(-ψ))*exp(mh))*(0.704*X1t1 - 0.154*X2t))
         
     # Solve the system    
-    sol = solve([Eq1, Eq2], Ct, Ut, set=True)[1]
-    sol = list(sol)[0]
-    Ct, Ut = sol
+    sol = linsolve([Eq1, Eq2], Ct, Ut)
+    Ct, Ut = sol.args[0]
     
     # Print Ct and Ut
     if print_option:
@@ -145,11 +144,8 @@ def solve_habit_persistence(alpha=0.5, eta=2, psi=0.3, print_option=False):
     Eq6 = X2t1 - (X2t - 0.154*X2tL1)
     
     # Solve the system 
-    sol = solve([Eq1, Eq2, Eq3, Eq4, Eq5, Eq6], 
-                Ht1, Kt1, MHt1, MKt1, X1t1, X2t1, 
-                set=True)
-    sol = list(sol[1])[0]
-    Ht1, Kt1, MHt1, MKt1, X1t1, X2t1 = sol
+    sol = linsolve([Eq1, Eq2, Eq3, Eq4, Eq5, Eq6], Ht1, Kt1, MHt1, MKt1, X1t1, X2t1)
+    Ht1, Kt1, MHt1, MKt1, X1t1, X2t1 = sol.args[0]
     
     # Solve for J
     J,_ = linear_eq_to_matrix([MKt1,MHt1,Kt1,Ht1,X1t1,X2t1,X2t], 
@@ -224,7 +220,6 @@ def solve_habit_persistence(alpha=0.5, eta=2, psi=0.3, print_option=False):
             print('Passed')
     else:
         print('Second check: Not passed')
-
     
     
     return J, A, N1, N2, Ct, Ut
@@ -235,7 +230,7 @@ def solve_habit_persistence(alpha=0.5, eta=2, psi=0.3, print_option=False):
 #==============================================================================
 # Function: Output time path for log consumption responses
 #==============================================================================
-def habit_persistence_consumption_path(A, N1, N2, Ct, print_option=False):
+def habit_persistence_consumption_path(A, N1, N2, Ct, T=100, print_option=False):
     """
     This function outputs the time path of C and Z responses given the 
     intial shock vector. 
@@ -245,6 +240,7 @@ def habit_persistence_consumption_path(A, N1, N2, Ct, print_option=False):
     A: 5X5 stable dynamic matrix
     N1, N2: stable dynamics for costates
     Ct: The analytical solution of C in terms of Z
+    T: Time periods
     print_option: boolean, True if print the detailed results. Default False
     
     Output
@@ -263,7 +259,7 @@ def habit_persistence_consumption_path(A, N1, N2, Ct, print_option=False):
         Z_path = np.zeros_like(Z0)
         Z_path = np.hstack([Z_path, Z0])
 
-        for t in range(T):
+        for t in range(T+1):
             Z = np.matmul(A,Z0)
             Z_path = np.hstack([Z_path,Z])
             Z0 = Z
@@ -293,16 +289,16 @@ def habit_persistence_consumption_path(A, N1, N2, Ct, print_option=False):
     
     # Compute the consumption-income ratio process C
     for n, Z_path in enumerate(Z_path_list):
-        C_path = np.zeros(T)
+        C_path = np.zeros(T+1)
         KH_path = Z_path[:2,:]   
         X_path = Z_path[2:,:] 
         MKMH_path = np.matmul(N1,KH_path) + np.matmul(N2,X_path)  
-        MK1 = MKMH_path[0,1:T]
-        MH1 = MKMH_path[1,1:T]
-        H = KH_path[1,0:T-1]
-        X11 = X_path[0,1:T]
-        X2 = X_path[2,1:T]
-        C_path[:T-1] = c_MKt1 * MK1 + c_MHt1 * MH1 + c_Ht * H + c_X1t1 * X11 + c_X2t * X2
+        MK1 = MKMH_path[0,1:T+1]
+        MH1 = MKMH_path[1,1:T+1]
+        H = KH_path[1,0:T]
+        X11 = X_path[0,1:T+1]
+        X2 = X_path[2,1:T+1]
+        C_path[:T] = c_MKt1 * MK1 + c_MHt1 * MH1 + c_Ht * H + c_X1t1 * X11 + c_X2t * X2
 
         # Compute the income process Y
         if n==0:
@@ -313,7 +309,7 @@ def habit_persistence_consumption_path(A, N1, N2, Ct, print_option=False):
             Y_path = X_path
 
         # Get the income process C + Y
-        CY_path = C_path + Y_path
+        CY_path = C_path[:T] + Y_path[:T]
         CY_path_list.append(CY_path)
 
     # Extract results
@@ -328,15 +324,15 @@ def habit_persistence_consumption_path(A, N1, N2, Ct, print_option=False):
 #==============================================================================
 # Function: Solve for Sv
 #==============================================================================
-def get_Sv(A, J, N1, N2, Ut):
+def get_Sv(J, A, N1, N2, Ut):
     """
     Solve for Sv
     
     Input
     =========
     (The inputs are obtained from solve_habit_persistence)
-    A: stable dynamic matrix A
     J: matrix J
+    A: stable dynamic matrix A
     N1, N2: stable dynamics for costates
     Ut: the utility function
     
@@ -407,7 +403,7 @@ def solve_sv(Sv, xi):
 
 
 #==============================================================================
-# Function: Calculate SvB
+# Function: Calculate Sv'B + Fy
 #==============================================================================
 def get_SvBFy(Sv):
     """
@@ -426,7 +422,6 @@ def get_SvBFy(Sv):
     SvBFy = SvB + Fy
     
     return SvBFy
-
 
 
 
@@ -462,37 +457,36 @@ def create_fig(R, C, fs=(8,8), X=40):
 
 
 #==============================================================================
-# Function: Plot the habit persistence consumption responses
+# Function: Solve the habit persistence consumption and uncertainty price
 #==============================================================================
-def plot_habit_consumption_path(α,ψ,η):
+def habit_consumption_and_uncertainty_price(alpha=0.5, psi=0.3, eta=2, T=100):
     """
-    Create the habit persistence consumption response plots.
+    Create the habit persistence consumption response paths.
     
     Input
     ==========
-    α : share parameter
-    ψ : depreciation rate, 0≤exp⁡(−ψ)<1 
-    η : elasticity of substitution
+    alpha: share parameter
+    eta: elasticity of substitution
+    psi: depreciation rate, 0≤exp⁡(−ψ)<1 
+    T: Time periods
  
     Output
     ==========
+    C1Y1: the path of consumption response regarding the permanent shock
+    C2Y2: the path of consumption response regarding the transitory shock
+    SvBFy: uncertainty price vector
     
     """    
     # Solve the habit persistence model
-    J, A, N1, N2, Ct, Ut = solve_habit_persistence(alpha = α, psi = ψ, eta = η)
+    J, A, N1, N2, Ct, Ut = solve_habit_persistence(alpha = alpha, psi = psi, eta = eta)
+
     
     # Compute the time paths for the consumption responses 
-    C1Y1, C2Y2 = habit_persistence_consumption_path(A, N1, N2, Ct)
+    C1Y1, C2Y2 = habit_persistence_consumption_path(A, N1, N2, Ct, T=T)
     
-    # Plot
-    p_args = {'lw': 2, 'alpha': 0.7}
-    fig, axes = create_fig(2,1,X=40) # 40 periods
-    ax = axes[0]
-    ax.set_ylim(0.1, 0.6)
-    ax.plot(list(range(T)), C1Y1, **p_args)
-    ax = axes[1]
-    ax.set_ylim(-0.2, 0.3)
-    ax.plot(list(range(T)), C2Y2, **p_args)
-    plt.show()
+    # Compute uncertainty price
+    Sv = get_Sv(J, A, N1, N2, Ut)
+    SvBFy = get_SvBFy(Sv)
+    SvBFy = [float('%.3g' % x) for x in SvBFy[0]]
     
-    return
+    return C1Y1, C2Y2, SvBFy
