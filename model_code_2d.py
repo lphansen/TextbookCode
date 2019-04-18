@@ -522,7 +522,7 @@ def plot_impulse_stationary(rhos, gamma, T, phi1, phi2, a_k, A, delta, beta1, be
 
 if __name__ == "__main__":
     # Can be used for simple disgnostics
-    r = .5
+    r = 1
     phi2 = 100
     model = stochastic_growth_model(r, 5./phi2, phi2, 0.025, 0.036, 0.005, 0.014, 0.0022)
     model.find_steady_state()

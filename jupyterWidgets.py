@@ -275,16 +275,15 @@ sigd4 = widgets.BoundedFloatText( ## cov11
     style = style_mini,
     layout = layout_mini
 )
-shock = widgets.BoundedIntText( ## death rate
-    value=1,
-    min = 1,
-    max = 4,
-    step=1,
+shock = widgets.Dropdown(
+    options = {'1', '2', '3', '4'},
+    value = '1',
+    description='Shock Number:',
     disabled=False,
-    description = 'Shock Number',
     style = {'description_width': '180px'},
     layout = Layout(width='70%')
 )
+
 timeHorizon = widgets.BoundedIntText( ## death rate
     value=160,
     min = 10,
@@ -308,7 +307,7 @@ gammaSave = widgets.BoundedFloatText( ## death rate
     value=5,
     min = 1,
     max = 10,
-    step=1,
+    step=.01,
     disabled=False,
     description = r'Risk aversion ($\gamma$) for saved plot',
     style = {'description_width': '180px'},
@@ -390,7 +389,7 @@ sigmas_box = VBox([sigk_box, sigd_box], layout = Layout(width='100%'))
 
 Selector_box = VBox([widgets.Label(value="Graph parameters"), shock, plotName, timeHorizon], \
                     layout = Layout(width='90%'))
-System_box = VBox([widgets.Label(value="System parameters"), folderName, overwrite, gammaSave], \
+System_box = VBox([widgets.Label(value="System parameters (used to save plot)"), folderName, overwrite, gammaSave], \
                   layout = Layout(width='90%'))
 
 
