@@ -354,7 +354,7 @@ def plot_impulse(rhos, gammas, T, phi1, phi2, a_k, A, delta, beta1, beta2,
                 ktable.append(model.kstar * 4)
                 ctable.append(np.exp(model.cstar) * 4)
                 itable.append(np.exp(model.istar) * 4)
-                qtable.append((1 - np.exp(-delta)) * np.exp(model.vstar * (r - 1)) * np.exp(model.cstar * -r))
+                qtable.append(np.exp(model.vstar * (1 - r)) * np.exp(model.cstar * r) / (1 - np.exp(-delta)))
 
             dmin = min(dmin, np.min(C - K) * 1.2)
             dmax = max(dmax, np.max(C - K) * 1.2)
