@@ -11,7 +11,6 @@ from pprint import pprint
 np.set_printoptions(suppress=True, threshold=3000, precision = 4)
 
 # Define parameters
-S = 2           # Impulse date
 sigm1 = 0.144 *.01 # Permanent shock
 sigm2 = 0.206 *.01 # Transitory shock
 c = 0           # steady state consumption
@@ -19,8 +18,11 @@ k = 0           # steady state capital to income
 rho = 0.00663     # rate of return on assets
 nu = 0.00373     # constant in the log income process
 delt = rho - nu       # discount rate
-nt = 10         # numeric tolerence
 
+x_evol_1 = 0.704
+x_evol_2 = 0.154
+# x_evol_1 = 0
+# x_evol_2 = 0
 # Define shocks
 # Z0_1 = np.zeros((5,1))
 # Z0_1[2,0] = sigm1
@@ -34,7 +36,7 @@ nt = 10         # numeric tolerence
 # Define Matrix Sy, B, Bx
 ## Here we use Su, Sy, Sv, Fy as row vectors for convenience. The counterparts
 ## in the note are (Su)', (Sy)', (Sv)', (Fy)'
-# Sy = np.array([0.704, 0, -0.154])
+# Sy = np.array([x_evol_1, 0, -x_evol_2])
 # B = np.hstack([Z0_1, Z0_2])
 #
 # Bx = B[2:,:]
@@ -47,13 +49,17 @@ Z0_2[3,0] = sigm2
 # Define Matrix Sy, B, Bx
 ## Here we use Su, Sy, Sv, Fy as row vectors for convenience. The counterparts
 ## in the note are (Su)', (Sy)', (Sv)', (Fy)'
-Sy = np.array([0.704, 0, -0.154])
+Sy = np.array([x_evol_1, 0, -x_evol_2])
 B = np.hstack([Z0_1, Z0_2])
+Z0_1 = B[:,0]
+Z0_2 = B[:,1]
+# print(Sy)
+# print(B)
 Bx = B[2:,:]
 # print(Z0_2)
 # Define Fy
 Fy = np.array([sigm1,sigm2])
-
+# print(Fy)
 
 
 #==============================================================================
@@ -88,7 +94,10 @@ def solve_habit_persistence(alpha=0.5, psi=0.3, eta=2, print_option=False):
     # h
     h = Symbol('h')
     Eq = exp(h)*exp(nu) - (exp(-psi)*exp(h) + (1 - exp(-psi))*exp(c))
-    h = solve(Eq,h)[0]
+    try:
+        h = solve(Eq,h)[0]
+    except:
+        print(eta, np.exp(-psi), alph, Eq)
 
     # u
     u = 1/(1 - eta)*log((1 - alph)*exp((1 - eta)*c) + alph*exp((1 - eta)*h))
@@ -143,23 +152,23 @@ def solve_habit_persistence(alpha=0.5, psi=0.3, eta=2, print_option=False):
          print('==== 3. Solve matrix L and J ====')
 
     # Equation (25)
-    Eq1 = exp(-delt + rho - nu)*(MKt1 - (0.704*X1t - 0.154*X2tL1)) - MKt
+    Eq1 = exp(-delt + rho - nu)*(MKt1 - (x_evol_1*X1t - x_evol_2*X2tL1)) - MKt
 
     # Equation (23)
-    Eq2 = exp(-delt - psi - nu) * exp_mh *(MHt1 - (0.704*X1t - 0.154*X2tL1)) + \
+    Eq2 = exp(-delt - psi - nu) * exp_mh *(MHt1 - (x_evol_1*X1t - x_evol_2*X2tL1)) + \
           alph*exp((eta - 1)*u - eta*h - nu - delt) * ((eta - 1)*Ut1 - eta * Ht1 - \
-                                            (0.704*X1t - 0.154*X2tL1)) -\
+                                            (x_evol_1*X1t - x_evol_2*X2tL1)) -\
           exp_mh * MHt
 
-    # Equation (13)
-    Eq3 = Kt1 - (exp(rho - nu)*Kt - exp(-nu)*Ct - k*(0.704*X1t - 0.154*X2tL1))
+    # Equation (11)
+    Eq3 = Kt1 - (exp(rho - nu)*Kt - exp(2*c-nu)*Ct - k*(x_evol_1*X1t - x_evol_2*X2tL1))
 
-    # Equation (22)
-    Eq4 = Ht1 - (exp(-psi - nu)*Ht + (1 - exp(-psi - nu))*Ct - (0.704*X1t - 0.154*X2tL1))
+    # Equation (21)
+    Eq4 = Ht1 - (exp(-psi - nu)*Ht + (1 - exp(-psi - nu))*Ct - (x_evol_1*X1t - x_evol_2*X2tL1))
 
     # Equation for X
-    Eq5 = X1t1 - 0.704*X1t
-    Eq6 = X2t1 - (X2t - 0.154*X2tL1)
+    Eq5 = X1t1 - x_evol_1*X1t
+    Eq6 = X2t1 - (X2t - x_evol_2*X2tL1)
 
     # Equation (24)
     Eq8 = (1 - alph)*exp((eta - 1)*u - eta*c)*((eta - 1)*Ut - eta*Ct) - \
@@ -183,7 +192,6 @@ def solve_habit_persistence(alpha=0.5, psi=0.3, eta=2, print_option=False):
     L[-1,-1] = 1
     J = np.vstack([J, np.zeros((1,8))])
     J[-1,-2] = 1
-
     # Define a sorting criterion for the Generalized Schur decomposition which
     # pushes all the explosive eigenvalues to the lower right corner and is
     # robust to cases where one of the matrices has a zero on the diagonal
@@ -206,7 +214,10 @@ def solve_habit_persistence(alpha=0.5, psi=0.3, eta=2, print_option=False):
     J_tilde = (J@N_block)[3:]
     A = la.inv(L_tilde) @ J_tilde
 
-    return J, A, N, Ut
+    Kt1_coeffs = A[0]
+    C_H_coeff = Kt1_coeffs[1] / -exp(2*c-nu)
+
+    return J, A, N, Ut, C_H_coeff
 
 
 
@@ -269,11 +280,11 @@ def habit_persistence_consumption_path(A, N, T=100, print_option=False):
         # plt.plot(Z_path[1], label='$H_t$')
         # plt.plot(Z_path[1,1:] + Y_path[1:], label=r'$H_{t+1} + Y_{t+1}$')
         # plt.plot(Z_path[1] + Y_path, label=r'$H_t + Y_t$')
-        # plt.plot(Y_path, label=r'$Y_t$')
-        # plt.title(r"shock = {}".format(n+1))
-        # plt.xlabel("t")
-        # plt.legend()
-        # plt.show()
+        plt.plot(Y_path, label=r'$Y_t$')
+        plt.title(r"shock = {}".format(n+1))
+        plt.xlabel("t")
+        plt.legend()
+        plt.show()
 
         CY_path = E_path[2] + Y_path
         CY_path_list.append(CY_path)
@@ -404,7 +415,7 @@ def create_fig(R, C, fs=(8,8), X=40):
 #==============================================================================
 # Function: Solve the habit persistence consumption and uncertainty price
 #==============================================================================
-def habit_consumption_and_uncertainty_price(alpha=0.5, psi=0.3, eta=2, T=100):
+def habit_consumption_and_uncertainty_price(alpha=0.5, psi=-np.log(.9), eta=50, T=100):
     """
     Create the habit persistence consumption response paths.
 
@@ -423,7 +434,7 @@ def habit_consumption_and_uncertainty_price(alpha=0.5, psi=0.3, eta=2, T=100):
 
     """
     # Solve the habit persistence model
-    J, A, N, Ut = solve_habit_persistence(alpha = alpha, psi = psi, eta = eta, print_option=True)
+    J, A, N, Ut, C_H_coeff = solve_habit_persistence(alpha = alpha, psi = psi, eta = eta)
 
     # Compute the time paths for the consumption responses
     CYs, Ys = habit_persistence_consumption_path(A, N, T=T)
@@ -434,9 +445,9 @@ def habit_consumption_and_uncertainty_price(alpha=0.5, psi=0.3, eta=2, T=100):
     SvBFy = get_SvBFy(Sv) * 100
     SvBFy = [float('%.3g' % x) for x in SvBFy]
 
-    return C1Y1, C2Y2, Y1, Y2, SvBFy
+    return C1Y1, C2Y2, Y1, Y2, SvBFy, C_H_coeff
 
 if __name__ == "__main__":
-    C1Y1, C2Y2, _, _, Price = habit_consumption_and_uncertainty_price(alpha=0.00001, psi=.05, eta=35, T=81)
-    plt.plot(C2Y2)
-    plt.show()
+    C1Y1, C2Y2, _, _, Price, Coeff = habit_consumption_and_uncertainty_price(alpha=0.00001, psi=.05, eta=35, T=81)
+    # plt.plot(C2Y2)
+    # plt.show()
