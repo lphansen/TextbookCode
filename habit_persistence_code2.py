@@ -11,8 +11,9 @@ from pprint import pprint
 np.set_printoptions(suppress=True, threshold=3000, precision = 4)
 
 # Define parameters
-sigm1 = 0.144 *.01 # Permanent shock
-sigm2 = 0.206 *.01 # Transitory shock
+sigm1 = 0.108*1.33 *.01 # Permanent shock
+sigm2 = 0.155*1.33 *.01 # Transitory shock
+
 c = 0           # steady state consumption
 k = 0           # steady state capital to income
 rho = 0.00663     # rate of return on assets
@@ -24,14 +25,14 @@ x_evol_2 = 0.154
 # x_evol_1 = 0
 # x_evol_2 = 0
 # Define shocks
-# Z0_1 = np.zeros((5,1))
-# Z0_1[2,0] = sigm1
-# Z0_1[1,0] = -sigm1
-# Z0_1[0,0] = -sigm1*k
-# Z0_2 = np.zeros((5,1))
-# Z0_2[3,0] = sigm2
-# Z0_2[1,0] = -sigm2
-# Z0_2[0,0] = -sigm2*k
+Z0_1 = np.zeros((5,1))
+Z0_1[2,0] = sigm1
+Z0_1[1,0] = -sigm1
+Z0_1[0,0] = -sigm1*k
+Z0_2 = np.zeros((5,1))
+Z0_2[3,0] = sigm2
+Z0_2[1,0] = -sigm2
+Z0_2[0,0] = -sigm2*k
 
 # Define Matrix Sy, B, Bx
 ## Here we use Su, Sy, Sv, Fy as row vectors for convenience. The counterparts
@@ -40,10 +41,12 @@ x_evol_2 = 0.154
 # B = np.hstack([Z0_1, Z0_2])
 #
 # Bx = B[2:,:]
-Z0_1 = np.zeros((5,1))
-Z0_1[2,0] = sigm1
-Z0_2 = np.zeros((5,1))
-Z0_2[3,0] = sigm2
+#Z0_1 = np.zeros((5,1))
+##Z0_1[1,0] = -sigm1
+#Z0_1[2,0] = sigm1
+#Z0_2 = np.zeros((5,1))
+#Z0_2[3,0] = sigm2
+##Z0_2[1,0] = -sigm2
 
 
 # Define Matrix Sy, B, Bx
@@ -51,8 +54,7 @@ Z0_2[3,0] = sigm2
 ## in the note are (Su)', (Sy)', (Sv)', (Fy)'
 Sy = np.array([x_evol_1, 0, -x_evol_2])
 B = np.hstack([Z0_1, Z0_2])
-Z0_1 = B[:,0]
-Z0_2 = B[:,1]
+
 # print(Sy)
 # print(B)
 Bx = B[2:,:]
@@ -172,7 +174,7 @@ def solve_habit_persistence(alpha=0.5, psi=0.3, eta=2, print_option=False):
 
     # Equation (24)
     Eq8 = (1 - alph)*exp((eta - 1)*u - eta*c)*((eta - 1)*Ut - eta*Ct) - \
-          (exp(mk)*MKt - (1 - exp(-psi))*exp_mh*MHt)
+          (exp(mk)*MKt + (1 - exp(-psi))*exp_mh*MHt)
 
     # Create a list of the variables in Zt1 and Zt, excluding X2t from Zt1
     # to avoid duplicates
@@ -280,11 +282,11 @@ def habit_persistence_consumption_path(A, N, T=100, print_option=False):
         # plt.plot(Z_path[1], label='$H_t$')
         # plt.plot(Z_path[1,1:] + Y_path[1:], label=r'$H_{t+1} + Y_{t+1}$')
         # plt.plot(Z_path[1] + Y_path, label=r'$H_t + Y_t$')
-        plt.plot(Y_path, label=r'$Y_t$')
-        plt.title(r"shock = {}".format(n+1))
-        plt.xlabel("t")
-        plt.legend()
-        plt.show()
+        # plt.plot(Y_path, label=r'$Y_t$')
+        # plt.title(r"shock = {}".format(n+1))
+        # plt.xlabel("t")
+        # plt.legend()
+        # plt.show()
 
         CY_path = E_path[2] + Y_path
         CY_path_list.append(CY_path)
