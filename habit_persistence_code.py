@@ -273,6 +273,7 @@ def habit_persistence_consumption_path(A, N1, N2, Ct, T=100, print_option=False)
          print('==== 8. Compute the log consumption process ====')
     
     C_path_list = []
+    Y_path_list = []
     CY_path_list = []
     
     # Obtain coefficients of consumption-income ratio process C
@@ -307,18 +308,24 @@ def habit_persistence_consumption_path(A, N1, N2, Ct, T=100, print_option=False)
         elif n==1:
             X_path = Z_path[3,:-1]
             Y_path = X_path
-
-        # Get the income process C + Y
+        
+        # Get the consumption process C + Y
         CY_path = C_path[:T] + Y_path[:T]
         CY_path_list.append(CY_path)
+        Y_path_temp = Y_path[:T]
+        Y_path_list.append(Y_path_temp)
+        
+        
 
     # Extract results
     C1Y1_path = CY_path_list[0]
-    C2Y2_path = CY_path_list[1] 
+    C2Y2_path = CY_path_list[1]
+    Y1_path = Y_path_list[0]
+    Y2_path = Y_path_list[1]    
     
     
     ##== Return results ==##
-    return C1Y1_path, C2Y2_path
+    return C1Y1_path, C2Y2_path, Y1_path, Y2_path
 
 
 #==============================================================================

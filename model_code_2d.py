@@ -214,7 +214,7 @@ class stochastic_growth_model:
 
     def gen_impulse_response(self, shock, T, gam, B, sigk, sigd):
         selector = np.zeros(4)
-        selector[shock - 1] = 1
+        selector[int(shock) - 1] = 1
 
         A = np.array([[np.exp(-self.beta1), 0], [0, np.exp(-self.beta2)]])
 
